@@ -8,8 +8,6 @@ ranks([two, three, four, five, six, seven,
 suit(X) :- suits(S), member(X, S).
 rank(X) :- ranks(S), member(X, S).
 
-/* Individual playing cards are expressed as terms (rank, suit). */
-
 card((R, S)) :- rank(R), suit(S).
 
 /* Literals for ranks are organized in a total order. */
@@ -27,18 +25,23 @@ rsucc(jack, queen).
 rsucc(queen, king).
 rsucc(king, ace).
 
-/* Recursive rules to generate all lower suits and ranks. */
-
-lower_suit(S1, S2) :-
-    suits(S),
-    lower_in(S1, S2, S).
+/* Rules to generate all lower suits and ranks. */
 
 lower_rank(R1, R2) :-
-    ranks(S),
-    lower_in(R1, R2, S).
+    rsucc(R1, R2).
 
-lower_in(X, Y, [X|S]) :- member(Y, S).
-lower_in(X, Y, [_|S]) :- lower_in(X, Y, S).
+lower_rank(R1, R2) :-
+    rsucc(R1, R3),
+    lower_rank(R3, R2).
+
+/* There are so few suits that it is easier to just table them. */
+
+lower_suit(clubs, diamonds).
+lower_suit(clubs, hearts).
+lower_suit(clubs, spades).
+lower_suit(diamonds, hearts).
+lower_suit(diamonds, spades).
+lower_suit(hearts, spades).
 
 lower_card((R1, S1), (R2, S2)) :-
     lower_rank(R1, R2),
@@ -47,11 +50,6 @@ lower_card((R1, S1), (R2, S2)) :-
 
 lower_card((R, S1), (R, S2)) :-
     lower_suit(S1, S2).
-
-sublist([], []).
-sublist([], [_|_]).
-sublist([X|T1], [X|T2]) :- sublist(T1, T2).
-sublist(T1, [_|T2]) :- sublist(T1, T2).
 
 /* A predicate that accepts and generates sorted hands of cards. All
  * following poker hand predicates may accept and generate only sorted
@@ -71,11 +69,11 @@ sorted_hand([C1, C2 | T], Len) :-
 /* Two rules for four-of-kind depending on whether the fifth card
  * is lower or higher ranking than the four equal ranked cards. */
 
-four_of_kind([(R, spades),(R, hearts),(R, diamonds),(R, clubs),(R2, S)]) :-
+four_of_kind([(R,spades),(R,hearts),(R,diamonds),(R,clubs),(R2,S)]) :-
     rank(R),
-    lower_card((R2, S), (R, clubs)).
+    lower_card((R2,S), (R,clubs)).
 
-four_of_kind([(R2, S), (R, spades),(R, hearts),(R, diamonds),(R, clubs)]) :-
+four_of_kind([(R2,S),(R,spades),(R,hearts),(R,diamonds),(R,clubs)]) :-
     rank(R),
     lower_card((R, spades), (R2, S)).
 
@@ -381,5 +379,3 @@ test_all3(Inf) :-
     
     Inf is Inf1 + Inf2 + Inf3 + Inf4 + Inf5 + Inf6 + Inf7 + Inf8 + Inf9 
     + Inf10 + Inf11 + Inf12 + Inf13 + Inf14 + Inf15.
-
-
