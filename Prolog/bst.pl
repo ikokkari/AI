@@ -15,6 +15,7 @@ bst_add(nil, X, tr(nil, X, nil)) :- !.
 bst_add(tr(T1, X, T2), X, tr(T1, X, T2)).
 bst_add(tr(T1, R, T2), X, tr(T3, R, T2)) :- 
     X < R,
+    !,
     bst_add(T1, X, T3).
 bst_add(tr(T1, R, T2), X, tr(T1, R, T3)) :-
     X > R,
