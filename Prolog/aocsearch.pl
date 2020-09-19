@@ -16,14 +16,16 @@ is_open(X, Y) :-
     X >= 0,
     Y >= 0,
     N is X*X + 3*X + 2*X*Y + Y + Y*Y + 42,
-    bit_parity(N, 0).
+    bit_parity(N, 1).
 
 step((X1, Y), (X2, Y)) :-
     (   plus(X1, 1, X2) ; plus(X2, 1, X1) ),
+    is_open(X1, Y),
     is_open(X2, Y).
 
 step((X, Y1), (X, Y2)) :-
     (   plus(Y1, 1, Y2) ; plus(Y2, 1, Y1) ),
+    is_open(X, Y1),
     is_open(X, Y2).
  
 /* Depth-limited depth-first search. */
