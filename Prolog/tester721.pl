@@ -4,7 +4,10 @@
 
 :- use_module(library(clpfd)).
 
-/* Write your predicates in this presently empty space. */
+/* Write your predicates in this presently empty space. Each predicate
+ * foo that passes the corresponding test predicate test_foo is worth
+ * three points to your course grade, up to the maximum of thirty points
+ * for ten properly solved problems. */
 
 
 
@@ -133,7 +136,7 @@ test_pancake_scramble :-
 	pancake_scramble("", ""),
 	pancake_scramble("q", "q"),
 	pancake_scramble("ab", "ba"),
-    pancake_scramble("artificial intelligence", "englen acftariiilitliec"),
+	pancake_scramble("artificial intelligence", "englen acftariiilitliec"),
 	pancake_scramble("pancakes with jam", "mjhi eanpackswt a"),
 	pancake_scramble("Prolog Schmolog", "glmc ooPrlgShoo")
 	]).          
