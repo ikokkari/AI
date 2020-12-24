@@ -11,13 +11,12 @@
 
 
 
-
-/* Complete the predicate all to call the test predicates for the
+/* Complete the predicate all/0 to call the test predicates for the
  * Prolog predicates that you have defined in the above space. */
 
 all :-
 	/* Fill in the calls to test predicates here. */
-    true.
+	true.
 
 /* DO NOT MODIFY ANYTHING BELOW THIS LINE!!!! */
 
@@ -39,7 +38,7 @@ run_tests([T|Tests], CI, CF, I, F) :-
     run_tests(Tests, C, CF, I, F).
 
 run_tests([T|Tests], CI, CF, I, F) :-
-    write('FAILED: '), write(T), nl,
+    write("FAILED: "), write(T), nl,
     CFF is CF + 1,
     run_tests(Tests, CI, CFF, I, F).
 
@@ -70,15 +69,15 @@ count(X, [_|T], C, Curr) :-
 /* Run the tests for the given predicate and print the report. */
 
 test_harness(Pred, Tests) :-
-    write(Pred), write(': '),
+    write(Pred), write(": "),
     run_tests(Tests, I, F),
-    write('Executed '), write(I), write(' total inferences. '),
-    write('Failed '), write(F), write(' test cases.'), nl.
+    write("Executed "), write(I), write(" total inferences. "),
+    write("Failed "), write(F), write(" test cases."), nl.
 
 /* Test predicates for the individual predicates. */
 
 test_duplicate_digit_bonus :-
-	test_harness('duplicate_digit_bonus', [
+	test_harness("duplicate_digit_bonus", [
 	duplicate_digit_bonus(333444555666, 50),
 	duplicate_digit_bonus(1223334444555556666667777777, 211111),
 	duplicate_digit_bonus(9999999999088888888888, 2100000000),
@@ -88,7 +87,7 @@ test_duplicate_digit_bonus :-
 	]).             
               
 test_three_summers :-
-	test_harness('three_summers', [
+	test_harness("three_summers", [
 	(findall(X, between(1, 20, X), L),
 	findall((A, B, C), three_summers(L, 40, A, B, C), LL), length(LL, 33)),
 	(findall(Z, (between(1, 20, X), Z is X*X), L),
@@ -97,7 +96,7 @@ test_three_summers :-
 	]).
                         
 test_tukeys_ninther :-
-    test_harness('tukeys_ninther', [
+    test_harness("tukeys_ninther", [
     tukeys_ninther([55, 99, 131, 42, 88, 11, 17, 16, 104, 2,
                      8, 7, 0, 1, 69, 8, 93, 9, 12, 11, 16, 1, 77, 90, 15, 4, 123], 15),
     (L = [4, 42, 987, 3123, 83120, 555321, 9815212, 34343434, 982264982],
@@ -110,27 +109,27 @@ test_tukeys_ninther :-
     ]).          
 
 test_give_change :-
-	test_harness('give_change', [
+	test_harness("give_change", [
 	give_change(100, [55, 10, 1], [55, 10, 10, 10, 10, 1, 1, 1, 1, 1]),
 	\+ give_change(34, [20, 9, 6], _),
 	(findall(Y, (between(1, 1000, N), give_change(N, [42, 17, 5, 1], Y)), L), flatten(L, LL), total(LL, 500500))
 	]).         
 
 test_extract_increasing :-
-	test_harness('extract_increasing', [
-	extract_increasing('0123456789', [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
-	extract_increasing('77777777777777777777777',
+	test_harness("extract_increasing", [
+	extract_increasing("0123456789", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+	extract_increasing("77777777777777777777777",
 	              	   [7, 77, 777, 7777, 77777, 777777]),
-	extract_increasing('3141592653589793238462643383279502884',
+	extract_increasing("3141592653589793238462643383279502884",
                        [3, 14, 15, 92, 653, 5897, 9323, 84626, 433832, 795028]),
-	extract_increasing('2718281828459045235360287471352662497757247093699959574966967627724076630353547594571382178525166427427466391932003059921817413596629043572900334295260',
+	extract_increasing("2718281828459045235360287471352662497757247093699959574966967627724076630353547594571382178525166427427466391932003059921817413596629043572900334295260",
                        [2, 7, 18, 28, 182, 845, 904, 5235, 36028, 74713, 526624, 977572,
                          4709369, 9959574, 96696762, 772407663, 3535475945, 7138217852,
                          51664274274, 66391932003, 599218174135, 966290435729])
 	]).          
 
 test_pancake_scramble :-
-	test_harness('pancake_scramble', [
+	test_harness("pancake_scramble", [
 	pancake_scramble("", ""),
 	pancake_scramble("q", "q"),
 	pancake_scramble("ab", "ba"),
@@ -140,7 +139,7 @@ test_pancake_scramble :-
 	]).          
               
 test_domino_cycle :-
-	test_harness('domino_cycle', [
+	test_harness("domino_cycle", [
 	domino_cycle([(3, 5), (5, 2), (2, 3)]),
 	domino_cycle([(4, 4)]),
 	\+ domino_cycle([(4, 1), (1, 7), (7, 2)]),
@@ -150,16 +149,16 @@ test_domino_cycle :-
 	]).          
 
 test_taxi_zum_zum :-
-	test_harness('taxi_zum_zum', [
-	taxi_zum_zum('f', (0, 1)),
-	taxi_zum_zum('fflllfrlflrfrlrrl', (3, 2)),
-	taxi_zum_zum('rrrrrrrrrllllrrrrrrrrrrrr', (0, 0)),
-	taxi_zum_zum('frfflffllfffr', (2, 0)),
-	taxi_zum_zum('lffrfrrfflfllrfflf', (-2, 1))                              
+	test_harness("taxi_zum_zum", [
+	taxi_zum_zum("f", (0, 1)),
+	taxi_zum_zum("fflllfrlflrfrlrrl", (3, 2)),
+	taxi_zum_zum("rrrrrrrrrllllrrrrrrrrrrrr", (0, 0)),
+	taxi_zum_zum("frfflffllfffr", (2, 0)),
+	taxi_zum_zum("lffrfrrfflfllrfflf", (-2, 1))                              
 	]).
 
 test_group_and_skip :-
-	test_harness('group_and_skip', [
+	test_harness("group_and_skip", [
 	group_and_skip(99, 5, 3, [3, 4, 3, 3, 2, 4]),
 	group_and_skip(123456789, 1000, 1, [123, 456, 789]),
 	group_and_skip(255, 2, 1, [1, 1, 1, 1, 1, 1, 1, 1]),
@@ -167,7 +166,7 @@ test_group_and_skip :-
 	]).              
               
 test_bulgarian_solitaire :-
-	test_harness('bulgarian_solitaire', [
+	test_harness("bulgarian_solitaire", [
 	bulgarian_solitaire([1, 1, 1], 2, 2),                                    
 	bulgarian_solitaire([5, 4, 1], 4, 10),                                    
 	bulgarian_solitaire([6, 4, 2, 1, 3, 5], 6, 0),
@@ -177,7 +176,7 @@ test_bulgarian_solitaire :-
 	]). 
 
 test_only_odd_digits :-
-	test_harness('only_odd_digits', [
+	test_harness("only_odd_digits", [
 	only_odd_digits(1),
 	only_odd_digits(999919999199991),
 	only_odd_digits(135797531),
@@ -189,7 +188,7 @@ test_only_odd_digits :-
 	]).
 
 test_josephus :-
-	test_harness('josephus', [
+	test_harness("josephus", [
 	josephus([joe, moe, bob, rob, josephus], 2, bob),
 	josephus([joe, moe, bob, rob, josephus], 99, josephus),
 	(findall(N, between(1, 30, N), L), josephus(L, 4, 6)),
@@ -199,7 +198,7 @@ test_josephus :-
 	]).
 
 test_first_missing_positive :-
-	test_harness('first_missing_positive', [ 
+	test_harness("first_missing_positive", [ 
 	first_missing_positive([99999, 123, 1, 24, 5, 9999999, 222, 3, 4, 7777777, 2], 6),
 	(findall(X, first_missing_positive([99, 4, 1, 3, 7, 2], X), L), L = [5]),
 	(findall(Y, between(1, 1000, Y), LLL), reverse(LLL, LL), findall(X, first_missing_positive(LL, X), L), L = [1001]),
@@ -208,7 +207,7 @@ test_first_missing_positive :-
 	]).
 
 test_riffle :-
-	test_harness('riffle', [
+	test_harness("riffle", [
 	riffle([1,2,3,4], [5,6,7,8], [1,5,2,6,3,7,4,8], left),
 	riffle([1,2,3,4], [5,6,7,8], [5,1,6,2,7,3,8,4], right),
 	(riffle([42, bob, 99], [55, jack, tom], [55|_], M), M = right),
@@ -217,7 +216,7 @@ test_riffle :-
 	]).
 
 test_sz :-
-	test_harness('sz', [
+	test_harness("sz", [
 	sz(272, 77777777777777770000),
 	(findall(S, sz(555, S), L), L = [7770]),
 	(findall(S, sz(2727, S), L), L = [777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777]),
@@ -227,7 +226,7 @@ test_sz :-
 	]).
 
 test_crag :-
-	test_harness('crag', [
+	test_harness("crag", [
 	crag(5, 4, 5, 10),
 	(findall(S, crag(3, 4, X, S), L), sort(L, [4, 5, 6, 8, 26])),
 	(findall((A, B, C), crag(A, B, C, 26), L), length(L, 12)),
@@ -236,7 +235,7 @@ test_crag :-
 	]).          
 
 test_count_dominators :-
-	test_harness('count_dominators', [
+	test_harness("count_dominators", [
 	count_dominators([], 0),
 	count_dominators([33, 22, 11, 64, -2, 5], 2),
 	(findall(X, between(1, 1000, X), L), reverse(L, LL), findall(D, count_dominators(LL, D), LD), LD = [1000]),
@@ -245,7 +244,7 @@ test_count_dominators :-
 	]).
 
 test_running_median :-
-	test_harness('running_median', [
+	test_harness("running_median", [
 	running_median([99, 42, 17, 55, -4, 18, 77], [99, 42, 42, 42, 17, 18, 18]),
 	(running_median([42, 42, 42, 42, 42, 42, 42], L), L = [42, 42, 42, 42, 42, 42, 42]),
 	running_median([1,2,3,4,5,6], [1,2,2,3,4,5]),
@@ -254,7 +253,7 @@ test_running_median :-
 	]).
 
 test_safe_squares_rooks :-
-	test_harness('safe_squares_rooks', [
+	test_harness("safe_squares_rooks", [
 	safe_squares_rooks([(2, 2), (3, 1), (5, 5), (2, 5)], 5, 4),
 	(findall((X, X), between(1, 50, X), L), safe_squares_rooks(L, 50, S), S = 0),
 	safe_squares_rooks([(4,3), (2,2), (1,2)], 10, 56),
@@ -263,7 +262,7 @@ test_safe_squares_rooks :-
 	]).          
 
 test_trick_winner :-
-	test_harness('trick_winner', [
+	test_harness("trick_winner", [
 	trick_winner([(five, spades), (queen, diamonds), (ace, spades), (ten, spades)], (ace, spades)),
 	(findall(X, trick_winner([(six, spades), (two, hearts), (X, spades), (nine, clubs)], (six, spades)), L), length(L, 4)),
 	(findall(X, trick_winner([(five, diamonds), X, (ten, hearts), (ten, diamonds)], X), L), length(L, 4)),
@@ -272,7 +271,7 @@ test_trick_winner :-
 	]).
 
 test_sum_of_two_squares :-
-	test_harness('sum_of_two_squares', [
+	test_harness("sum_of_two_squares", [
 	\+ sum_of_two_squares(11, _, _),
 	sum_of_two_squares(50, 7, 1),
 	(X is 123^2 + 456^2, sum_of_two_squares(X, 456, 123)),
@@ -281,7 +280,7 @@ test_sum_of_two_squares :-
 	]).
 
 test_hitting_integer_powers :-
-	test_harness('hitting_integer_powers', [
+	test_harness("hitting_integer_powers", [
 	hitting_integer_powers(2, 7, 100, 73, 26),
 	hitting_integer_powers(3, 6, 100, 137, 84),
 	hitting_integer_powers(4, 5, 1000, 916, 789),
@@ -290,7 +289,7 @@ test_hitting_integer_powers :-
 	]).
 
 test_sum_of_distinct_cubes :-
-	test_harness('sum_of_distinct_cubes', [
+	test_harness("sum_of_distinct_cubes", [
 	sum_of_distinct_cubes(777777777, [919, 117, 29, 6]),
 	(sum_of_distinct_cubes(123456789, L), L = [497, 88, 22, 8, 7, 6, 5]),
 	(X is 10^16+1, sum_of_distinct_cubes(X, L), L = [215443, 4027, 139, 12, 10, 8, 5, 3]),
@@ -298,7 +297,7 @@ test_sum_of_distinct_cubes :-
 	]).
 
 test_fibonacci_sum :-
-	test_harness('fibonacci_sum', [
+	test_harness("fibonacci_sum", [
 	fibonacci_sum(10, [8, 2]),
 	fibonacci_sum(42, [34, 8]),
 	fibonacci_sum(100, [89, 8, 3]),
