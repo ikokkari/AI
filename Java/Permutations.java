@@ -8,13 +8,13 @@ import java.util.*;
  * none the wiser, since it cannot see inside this black box anyway.
  * 
  * Here, a computational iterator that produces all permutations of integers from
- * 0 to n - 1, with an option to use a PermPredicate to keep only those permutations
- * that satisfy the condition implicitly defined by that PermPredicate.
+ * 0 to n - 1, with an option to use a CutoffTest to keep only those permutations
+ * that satisfy the condition implicitly defined by that CutoffTest.
  * 
  * Implementing backtracking algorithm with state tables instead of recursion allows
- * the generation of solutions to be paused at each generated permutation, with the
- * rest of the program doing something else, and then restarted from where it left
- * off to generate the next permutation.
+ * the generation of solutions to be paused at each generated permutation so that the
+ * rest of the program can do something else. Generation of solutions can then be
+ * restarted from where it left off, to generate the remaining permutations.
  */
 
 public class Permutations implements Iterator<List<Integer>> {
