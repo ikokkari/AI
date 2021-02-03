@@ -6,8 +6,9 @@ import java.util.function.*;
 
 public class AStar {
     
-    // Count of how many nodes were expanded in the most recent search.
+    // Keep track of how many nodes were expanded in the most recent search.
     private static int expandedCount;
+    
     /**
      * Returns the count of how many nodes were expanded in the most recent search.
      * @return The node expansion count.
@@ -61,7 +62,7 @@ public class AStar {
         expandedCount = 0;
         // The vertices that have been discovered, along with so far best g-values.
         Map<V, Double> discovered = new HashMap<V, Double>();
-        // Initialize the null heuristic.
+        // If no heuristic has been given, use the trivial null heuristic.
         if(h == null) { h = v -> 0.0; }
         // The search nodes waiting to be processed.
         PriorityQueue<SearchNode<V>> frontier = 

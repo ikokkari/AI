@@ -74,6 +74,5 @@ public class IterativeDFS {
         
         // Return the negative answer.
         return cutoffOccurred? -1: 0;
-    }
-    
+    }    
 }

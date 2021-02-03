@@ -3,7 +3,7 @@ import java.util.function.*;
 
 public class BFS {
     
-    // A data structure to store a vertex that we have found in the search, along with
+    // A data structure to store a vertex found in the search, along with
     // the parent reference from which node the search arrived to this node.
     private static class SearchNode<V> {
         public V vertex;

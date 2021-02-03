@@ -22,7 +22,7 @@ public class Permutations implements Iterator<List<Integer>> {
     // Functional interface to define a permutation predicate to allow the outside
     // user to generate only the subset of permutations that satisfies additional
     // constraints defined by the given predicate.
-    public interface Predicate {
+    public interface CutoffTest {
         /**
          * Given that first {@code n-1} elements of the list satisfy this predicate,
          * determine whether first {@code n} elements of that list also satisfy it.
@@ -47,15 +47,15 @@ public class Permutations implements Iterator<List<Integer>> {
     // The level that the iterative backtracking is currently at.
     private int level;
     // The predicate used to filter the permutations.
-    private Permutations.Predicate pred;
+    private Permutations.CutoffTest cutoff;
     // Whether the values for given position are iterated in ascending order.
     private boolean ascending = true;
     
     public Permutations(int n) { this(n, null); }
     
-    public Permutations(int n, Permutations.Predicate pred) {
+    public Permutations(int n, Permutations.CutoffTest cutoff) {
         this.n = n;
-        this.pred = pred;
+        this.cutoff = cutoff;
         // Initialize the dancing list and the current permutation.
         prev = new int[n+1];
         next = new int[n+1];
@@ -100,7 +100,7 @@ public class Permutations implements Iterator<List<Integer>> {
                 if(cv == n) { level--; }
                 else {
                     // If the predicate accepts the current partial solution, advance.
-                    if(pred == null || pred.test(current, level + 1)) {
+                    if(cutoff == null || cutoff.test(current, level + 1)) {
                         next[prev[cv]] = next[cv]; // Unlink value from dancing list.
                         prev[next[cv]] = prev[cv];
                         level++; // Advance to the next level in backtracking.
@@ -145,7 +145,7 @@ public class Permutations implements Iterator<List<Integer>> {
         emit(p, 4);
         
         // Accept a partial solution if its consecutive values differ by at least k.
-        class DifferenceAtLeast implements Permutations.Predicate {
+        class DifferenceAtLeast implements Permutations.CutoffTest {
             private int k;
             public DifferenceAtLeast(int k) { this.k = k; }
             public boolean test(List<Integer> elements, int n) {
@@ -158,7 +158,7 @@ public class Permutations implements Iterator<List<Integer>> {
         emit(p, 2);
         
         // Accept a partial solution if each value is at most k away from its sorted position.
-        class DistanceAtMost implements Permutations.Predicate {
+        class DistanceAtMost implements Permutations.CutoffTest {
             private int k;
             public DistanceAtMost(int k) { this.k = k; }
             public boolean test(List<Integer> elements, int n) {
@@ -170,7 +170,7 @@ public class Permutations implements Iterator<List<Integer>> {
         emit(p, 3);
         
         // Accept a partial solution if its values alternate going up and down.
-        class Zigzag implements Permutations.Predicate {
+        class Zigzag implements Permutations.CutoffTest {
             public boolean test(List<Integer> elements, int n) {
                 if(n < 3) { return true; }
                 int a = elements.get(n - 3);
@@ -181,7 +181,7 @@ public class Permutations implements Iterator<List<Integer>> {
         }
         
         // Accept a partial solution if it is a binary max-heap.
-        class MaxHeap implements Permutations.Predicate {
+        class MaxHeap implements Permutations.CutoffTest {
             public boolean test(List<Integer> elements, int n) {
                 if(n < 2) { return true; }
                 return elements.get((n/2)-1) > elements.get(n-1);
@@ -189,7 +189,7 @@ public class Permutations implements Iterator<List<Integer>> {
         }        
         
         // Accept a partial solution if it can become an involution ("self-inverse").
-        class Involution implements Permutations.Predicate {
+        class Involution implements Permutations.CutoffTest {
             public boolean test(List<Integer> elements, int n) {
                 if(n < 2) { return true; }
                 int e = elements.get(n-1);
