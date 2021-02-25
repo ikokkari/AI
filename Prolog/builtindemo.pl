@@ -8,7 +8,7 @@
 /* Linear stack version without tail calls. */
 
 my_length([], 0).
-my_length([_|T], N) :-
+my_length([_ | T], N) :-
     my_length(T, N2),
     plus(N2, 1, N).
 
@@ -16,8 +16,10 @@ my_length([_|T], N) :-
 
 my_length_acc(L, N) :-
     my_length_acc(L, 0, N).
+
 my_length_acc([], N, N).
-my_length_acc([_|T], Acc, N) :-
+
+my_length_acc([_ | T], Acc, N) :-
     plus(Acc, 1, Acc2),
     my_length_acc(T, Acc2, N).
 
@@ -34,9 +36,12 @@ my_memberchk(X, [_|L]) :-
  * predicate could be made even more flexible using constraint logic
  * programming, but that is a topic for later. */
 
-my_between(N, N, N) :- !.
-my_between(M, N, M) :- M < N.
 my_between(M, N, _) :- M > N, !, fail.
+
+my_between(N, N, N) :- !.
+
+my_between(M, N, M) :- M < N.
+
 my_between(M, N, I) :-
     M2 is M + 1,
     my_between(M2, N, I).
@@ -44,10 +49,13 @@ my_between(M, N, I) :-
 /* Use of the metapredicate var(X) makes my_nth1 reversible. */
 
 my_nth1(1, [X|_], X).
+
 my_nth1(N, [_|T], X) :-
-    var(N), !,
+    var(N),
+    !,
     my_nth1(N2, T, X),
     N is N2 + 1.
+
 my_nth1(N, [_|T], X) :-
     N > 1,
     N2 is N - 1,
@@ -62,6 +70,7 @@ my_take(N, [X|L1], [X|L2]) :-
     !,
     N2 is N - 1,
     my_take(N2, L1, L2).
+
 my_take(N, [X|L1], [X|L2]) :-
     var(N),
     my_take(N2, L1, L2),
@@ -79,10 +88,12 @@ my_drop(N, [_|L], L2) :-
     !,
     N2 is N - 1,
     my_drop(N2, L, L2).
+
 my_drop(N, [_|L], L2) :-
     var(N),
     my_drop(N2, L, L2),
     N is N2 + 1.
+
 my_drop(0, L, L).
 
 /* Create a copy of list with every occurrence of X left out. This
