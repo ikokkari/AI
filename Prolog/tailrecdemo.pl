@@ -20,10 +20,12 @@ maxlist_acc([H|T], X) :-
  * This base case rule matches only the situation where the condition
  * of the imagined while-loop would be false; in this problem, when
  * the remaining list from which we look for elements is empty. */
+
 maxlist_acc([], X, X).
 
 /* The general recursive rule simulates going to the next round of the
  * while-loop with the new values for local variables. */
+
 maxlist_acc([H|T], X, MaxSoFar) :-
     M2 is max(H, MaxSoFar),
     maxlist_acc(T, X, M2).
@@ -44,10 +46,12 @@ my_rev([H|T], R) :-
 
 /* The rule for top-level call again adds a new parameter to the call,
  * used to keep track of the local variable of the implicit while-loop. */
+
 my_rev_acc(L, R) :- 
     my_rev_acc(L, R, []).
 
 /* The rule for the base case unifies the result with the correct answer. */
+
 my_rev_acc([], R, R).
 
 /* The rule for the general case keeps the result unbound (or bound to
@@ -90,13 +94,16 @@ falling_power(X, N, P) :-
  * Perhaps the reader could fill in the comments at this point. */
 
 /* In the top-level call, ... */
+
 falling_power_acc(X, N, P) :-
     falling_power_acc(X, N, P, 1).
 
 /* The rule for the base case ... */
+
 falling_power_acc(_, 0, P, P) :- !.
 
 /* The general case updates the ... */
+
 falling_power_acc(X, N, P, SoFar) :-
     N > 0,
     X2 is X - 1,
@@ -112,12 +119,14 @@ is_prime(2) :- !.
 is_prime(N) :- N mod 2 =:= 0, !, fail.
 
 /* Otherwise, here comes the top-level call... */
+
 is_prime(X) :- is_prime(X, 3).
 
 /* The additional accumulator parameter D keeps track of which divisor
  * we are currently investigating. Every composite integer N must have
  * a divisor that is at most equal to the square root of N, so we can
  * stop looking if one has not been found until then. */
+
 is_prime(X, D) :-
     D2 is D * D,
     D2 > X,
@@ -126,6 +135,7 @@ is_prime(X, D) :-
 /* Otherwise, continued success required that D not divide N. Note
  * again how the case for failure is not needed, since Prolog evaluation
  * fails by itself anyway when no rules match the query. */
+
 is_prime(X, D) :-
     X mod D > 0,
     D2 is D + 2,
@@ -161,9 +171,8 @@ collatz(N, S, SoFar) :-
     N2 is 3 * N + 1,
     collatz(N2, S, [N|SoFar]).
 
-/* Every course in programming must use Fibonacci numbers somewhere. */
-
-/* The plain recursive version is exponentially slow in every language. */
+/* Every computer science course must use Fibonacci numbers somewhere.
+ * Plain recursive version is exponentially slow in every language. */
 
 fib_rec(0, 1) :- !.
 fib_rec(1, 1) :- !.
@@ -185,9 +194,11 @@ fib_acc(N, F) :-
     fib_acc(N, F, 1, 1).
 
 /* The base case rule unifies result with the previous Fibonacci number. */
+
 fib_acc(1, F, _, F) :- !.
 
 /* The general case shifts the sliding window from (F2, F1) to (F1, F2+F1). */
+
 fib_acc(N, F, F2, F1) :-
     N > 0,
     FF is F2 + F1,
@@ -197,6 +208,7 @@ fib_acc(N, F, F2, F1) :-
 /* Merge sort is the most straightforward O(n log n) sorting algorithm. */
 
 /* Split the list into two lists alternating the elements. */
+
 split([], [], []) :- !.
 split([X], [X], []) :- !.
 split([X, Y | T], [X | T1], [Y | T2]) :-
