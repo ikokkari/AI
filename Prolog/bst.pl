@@ -11,59 +11,89 @@
  * given BST creates a new BST otherwise identical to the previous tree
  * except along the insertion path. */
 
-bst_add(nil, X, tr(nil, X, nil)) :- !.
-bst_add(tr(T1, X, T2), X, tr(T1, X, T2)).
-bst_add(tr(T1, R, T2), X, tr(T3, R, T2)) :- 
+/* Define that a binary search tree is either nil or bst(Left, E, Right)
+ * where Left and Right are the left and right subtrees and E is the
+ * element in their common root node. */
+
+/* Add the new element X into the empty tree. */
+
+bst_add(nil, X, bst(nil, X, nil)).
+
+/* Adding an existing element changes nothing in the tree. */
+
+bst_add(bst(T1, X, T2), X, bst(T1, X, T2)).
+
+/* Add the new element X into the left subtree. */
+
+bst_add(bst(T1, R, T2), X, bst(T3, R, T2)) :- 
     X < R,
     !,
     bst_add(T1, X, T3).
-bst_add(tr(T1, R, T2), X, tr(T1, R, T3)) :-
+
+/* Add the new element X into the right subtree. */
+
+bst_add(bst(T1, R, T2), X, bst(T1, R, T3)) :-
     X > R,
     bst_add(T2, X, T3).
 
-/* The predicates to test element containment. The metapredicates
- * var and nonvar are used to make the predicate more general. */
+/* The predicate to test for tree membership. The metapredicates
+ * var and nonvar are used to make the predicate more general so that
+ * we can iterate over the members of the given BST with the general
+ * query where X is unbound. */
 
-bst_contains(tr(T1, R, _), X) :- 
-    nonvar(R),
+/* Find the element in the left subtree. */
+
+bst_contains(bst(T1, R, _), X) :-
     nonvar(X),
     X < R,
     bst_contains(T1, X).
-bst_contains(tr(T1, _, _), X) :- 
+
+bst_contains(bst(T1, _, _), X) :- 
     var(X),
     bst_contains(T1, X).
-bst_contains(tr(_, X, _), X).
-bst_contains(tr(_, R, T2), X) :- 
+
+/* Find the element in the root. */
+
+bst_contains(bst(_, X, _), X).
+
+/* Find the element in the right subtree. */
+
+bst_contains(bst(_, R, T2), X) :- 
     nonvar(R),
     nonvar(X),
-    X > R, bst_contains(T2, X).
-bst_contains(tr(_, _, T2), X) :- 
+    X > R,
+    bst_contains(T2, X).
+
+bst_contains(bst(_, _, T2), X) :- 
     var(X),
     bst_contains(T2, X).
 
-/* The rules for finding the minimum element are trivial. */
+/* The rules for finding the minimum element are trivial. The
+ * rules for finding the maximum would be symmetric. */
 
-bst_min(tr(nil, X, _), X) :- !.
-bst_min(tr(T1, _, _), X) :-
+bst_min(bst(nil, X, _), X) :- !.
+
+bst_min(bst(T1, _, _), X) :-
     bst_min(T1, X).
 
-/* Accumulators strike again with BST creation. For convenience,
- * a predicate to create a BST that contains all keys from L,
- * inserting these keys in the order that they appear in L. */
+/* Convert the list of elements into a BST by adding them one
+ * at the time to an empty tree. Tail recursion with accumulator
+ * does the job handily. */
 
 bst_create(L, Result) :- /* top level */
-    bst_create(L, Result, nil).
+    bst_create(L, nil, Result).
 
 bst_create([], Result, Result). /* base case */
 
-bst_create([H|T], Result, SoFar) :- /* general case */
+bst_create([H|T], SoFar, Result) :- /* general case */
     bst_add(SoFar, H, SoFar2),
-    bst_create(T, Result, SoFar2).
+    bst_create(T, SoFar2, Result).
 
 /* Prolog does not have infinity for integers, so let us define one.
  * To emphasize that all names are meaningless and made up, we shall
  * call this infinity "bob" instead of "inf". */
 
+lt(-bob, bob) :- !.
 lt(-bob, X) :- integer(X), !.
 lt(X, bob) :- integer(X), !.
 lt(X, Y) :- X < Y.
@@ -73,12 +103,12 @@ lt(X, Y) :- X < Y.
  * must be between. */
 
 bst_verify(T) :- /* top level */
-    bst_verify(T, -inf, inf).
+    bst_verify(T, -bob, bob).
 
 bst_verify(nil, _, _). /* base case */
 
-bst_verify(tr(T1, X, T2), Min, Max) :- /* general case */
-    lt(Min, X),
-    lt(X, Max),
-    bst_verify(T1, Min, X),
-    bst_verify(T2, X, Max).
+bst_verify(bst(T1, R, T2), Min, Max) :- /* general case */
+    lt(Min, R),
+    lt(R, Max),
+    bst_verify(T1, Min, R),
+    bst_verify(T2, R, Max).

@@ -6,20 +6,20 @@
  * some variables to be internally marked as having integer domains.
  * Instead of being merely bound or unbound, each integer variable
  * carries a set of equality and inequality constraints. If these
- * constraints become contradictory, such as X #< 3 \/ X #> 10 for
+ * constraints become contradictory, such as X #< 3 /\ X #> 10 for
  * some integer variable X, the execution fails and backtracks to
  * the most recent choice point.
  * 
  * Once you get accustomed to this mechanism, you can just use it
  * as routine and forget that it even existed. Predicates written in
- * the CLP formalism just silently work better than ordinary Prolog
- * predicates, in that they terminate with solutions for some queries
- * that would make the ordinary predicates crash or fall into an
- * infinite loop.
+ * the CLP formalism silently work just like ordinary predicates
+ * except better, in that they terminate with solutions for some
+ * queries that would make ordinary predicates crash or fall into
+ * an infinite loop.
  * 
  * Integer variables with arbitrary constraints can always be turned
  * back into ordinary Prolog variables with predicates indomain/1 and
- * labelling/2. These predicates bind one variable or a list of
+ * labeling/2. These predicates bind one variable or a list of
  * variables to the values in their domain one value at the time.
  */
 
@@ -41,9 +41,18 @@ is_ascending([N1, N2 | T]) :-
     N1 #< N2,
     is_ascending([N2 | T]).
 
+/* Use of lazy constraints allows the my_length predicate to be
+ * tail recursive out of the box. */
+
+my_length([], 0).
+my_length([_|T], N) :-
+    N #= N1 + 1,
+    my_length(T, N1).
+
 /* Factorials. */
 
 n_factorial(0, 1).
+
 n_factorial(N, F) :-
         N #> 0,
         N1 #= N - 1,
@@ -54,10 +63,13 @@ n_factorial(N, F) :-
 
 factors(N, F) :-
     factors(N, F, 2).
+
 factors(1, [], _).
+
 factors(N, [N], First) :-
     N #> 1,
     First #> N.
+
 factors(N, [A|F], First) :-
     N #> 1,
     two_factors(N, A, B, First),
