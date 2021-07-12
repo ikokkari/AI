@@ -2,7 +2,8 @@
 
 sign(0, 0).
 sign(X, -1) :- 
-    X < 0.
+    X < 0,
+    !.
 sign(X, 1) :- 
     X > 0.
 
@@ -10,7 +11,8 @@ sign(X, 1) :-
  * cases of simplification are when everything is an integer. */
 
 simp(N, N/1) :- 
-    integer(N).
+    integer(N),
+    !.
 
 simp(N1 / D1, N / D) :-
     integer(N1),
@@ -89,7 +91,7 @@ subseq([X|L], [_|L2]) :- subseq([X|L], L2).
  * that can be built from numbers in L, and the predicate simp is
  * used to test whether the expression simplifies to Goal. */ 
 
-solve(L, E, Goal) :-solve
+solve(L, E, Goal) :-
     simp(Goal, G),
     /* generate */
     subseq(Ls, L),
@@ -102,4 +104,3 @@ solve(L, E, Goal) :-solve
  * all possible expressions that can be constructed from elements
  * of the list L, and evaluates each expression to see if maybe it
  * happens to evaluate to Goal. Hey, we could get lucky. */
-
