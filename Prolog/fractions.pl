@@ -28,7 +28,7 @@ simp(N1 / D1, N / D) :-
 simp(T1 + T2, NR / DR) :- 
     simp(T1, N1 / D1),
     simp(T2, N2 / D2),
-    N = N1*D2 + N2*D1,
+    N is N1*D2 + N2*D1,
     D is D1 * D2,
     simp(N / D, NR / DR).
 
