@@ -1,6 +1,9 @@
-import java.util.*;
-import java.util.function.*;
-import java.io.*;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 public class IterativeDFS {
 
@@ -20,8 +23,8 @@ public class IterativeDFS {
         int maxDepth
     )
     {
-        LinkedList<E> path = new LinkedList<E>();
-        Set<E> discovered = new HashSet<E>();
+        LinkedList<E> path = new LinkedList<>();
+        Set<E> discovered = new HashSet<>();
         for(int currDepth = 1; currDepth <= maxDepth; currDepth++) {
             int result = search(edges, start, goalTest, currDepth, path, discovered);
             if(result > 0) { return path; }
@@ -74,5 +77,6 @@ public class IterativeDFS {
         
         // Return the negative answer.
         return cutoffOccurred? -1: 0;
-    }    
+    }
+    
 }

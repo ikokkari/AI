@@ -1,15 +1,20 @@
-import java.util.*;
-import java.util.function.*;
-import java.util.stream.*;
-import java.io.*;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Scanner;
 
 /* Inspired by the work of Donald Knuth in Stanford Graphbase and TAOCP: Volume 4. */
 
 public class SearchMain {
     // Scrabble letter values from a to z.
-    private static int[] letterCost = {
-       1, 3, 3, 2, 1, 4, 2, 4, 1, 8, 5, 1, 3, 1, 1, 3, 10, 1, 1, 1, 1, 4, 4, 8, 4, 10
-    // a  b  c  d  e  f  g  h  i  j  k  l  m  n  o  p  q   r  s  t  u  v  w  x  y  z
+    private static final int[] letterCost = {
+      1, 3, 3, 2, 1, 4, 2, 4, 1, 8, 5, 1, 3, 1, 1, 3, 10, 1, 1, 1, 1, 4, 4, 8, 4, 10
+    //a  b  c  d  e  f  g  h  i  j  k  l  m  n  o  p  q   r  s  t  u  v  w  x  y  z
     };
     
     // Count the number of positions where the two words differ.
@@ -34,7 +39,7 @@ public class SearchMain {
     
     public static void main(String[] args) throws FileNotFoundException {
         // Read in the list of words from sgb-words.
-        ArrayList<String> words = new ArrayList<String>();
+        ArrayList<String> words = new ArrayList<>();
         Scanner sc = new Scanner(new File("sgb-words.txt"));
         sc.useDelimiter("\\n");
         while(sc.hasNextLine()) { words.add(sc.nextLine()); }
@@ -62,9 +67,9 @@ public class SearchMain {
         int count = 0;
         for(String word: neighbourMap.get(maxNeighboursWord)) {
             System.out.print(word + " ");
-            if(++count % 13 == 0) { System.out.println(""); }
+            if(++count % 13 == 0) { System.out.println(); }
         }
-        if(count % 13 != 1) { System.out.println(""); }
+        if(count % 13 != 1) { System.out.println(); }
         Random rng = new Random(12345);
         System.out.println("\nHere are some random words and their neighbours.");
         for(int i = 0; i < 15; i++) {
@@ -78,10 +83,10 @@ public class SearchMain {
         for(String word: words) {
             if(neighbourMap.get(word).size() == 0) {
                 System.out.print(" " + word);
-                if(++singletonCount % 13 == 0) { System.out.println(""); }
+                if(++singletonCount % 13 == 0) { System.out.println(); }
             }
         }
-        if(singletonCount % 13 != 1) { System.out.println(""); }
+        if(singletonCount % 13 != 1) { System.out.println(); }
         System.out.println("The wordlist contains total of " + singletonCount + " singleton words.");        
         
         System.out.println("\nNext, we shall find some shortest paths using Scrabble letter costs.");
@@ -90,7 +95,7 @@ public class SearchMain {
             String goal = words.get(rng.nextInt(words.size()));
             System.out.print("\nLooking for shortest path from '" + start + "' to '" + goal + "'... ");
             System.out.flush();
-            List<String> result = AStar.<String>shortestPath( 
+            List<String> result = AStar.shortestPath(
                 v -> neighbourMap.get(v),
                 (v1, v2) -> scrabbleDistance(v1, v2),
                 start,
@@ -118,12 +123,12 @@ public class SearchMain {
                 System.out.println(" = " + total);
             }
         }
-        System.out.println("\nFinally, let's compare the solutions of A*, Uniform cost, BFS and Iterative DFS.");
+        System.out.println("\nFinally, let's compare the solutions of A*, Uniform cost, and BFS.");
         for(int i = 0; i < 10; i++) {
             String start = words.get(rng.nextInt(words.size()));
             String goal = words.get(rng.nextInt(words.size()));
             System.out.println("\nLooking for path from '" + start + "' to '" + goal + "'... ");
-            List<String> astarResult = AStar.<String>shortestPath(
+            List<String> astarResult = AStar.shortestPath(
                 v -> neighbourMap.get(v),
                 (v1, v2) -> 1.0,
                 start,
@@ -131,7 +136,7 @@ public class SearchMain {
                 word -> hammingDistance(word, goal)
             );
             int astarExpand = AStar.getExpandedCount();
-            List<String> ucResult = AStar.<String>shortestPath(
+            List<String> ucResult = AStar.shortestPath(
                 v -> neighbourMap.get(v),
                 (v1, v2) -> 1.0,
                 start,
@@ -139,7 +144,7 @@ public class SearchMain {
                 word -> 0.0
             );
             int ucExpand = AStar.getExpandedCount();
-            List<String> bfsResult = BFS.<String>shortestPath(
+            List<String> bfsResult = BFS.shortestPath(
                 v -> neighbourMap.get(v),
                 start,
                 word -> word.equals(goal),

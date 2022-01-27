@@ -1,9 +1,13 @@
-import java.util.*;
-import java.util.function.*;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 public class BFS {
     
-    // A data structure to store a vertex found in the search, along with
+    // A data structure to store a vertex that we have found in the search, along with
     // the parent reference from which node the search arrived to this node.
     private static class SearchNode<V> {
         public V vertex;
@@ -37,31 +41,31 @@ public class BFS {
     
         while(frontier.size() > 0) {
             // Extract the node to be processed next.
-            SearchNode<V> curr = frontier.removeFirst();
-            V current = curr.vertex;
+            SearchNode<V> currentNode = frontier.removeFirst();
+            V currentState = currentNode.vertex;
             // If this vertex has already been visited, skip it now.
-            if(visited.contains(current)) { continue; }
+            if(visited.contains(currentState)) { continue; }
             // If this vertex is a goal, finish the search and build up the answer path.
-            if(goalTest.test(current)) { 
+            if(goalTest.test(currentState)) {
                 LinkedList<V> solutionPath = new LinkedList<V>();
                 // Follow the parent pointers to build the path in reverse order.
-                while(curr != null) {
-                    solutionPath.addFirst(curr.vertex);
-                    curr = curr.parent;
+                while(currentNode != null) {
+                    solutionPath.addFirst(currentNode.vertex);
+                    currentNode = currentNode.parent;
                 }
                 return solutionPath;
             }
             // The current vertex has now been visited.
-            visited.add(current);
+            visited.add(currentState);
             // Expand the current node and look at its neighbours.
-            for(V next: edges.apply(current)) {
+            for(V next: edges.apply(currentState)) {
                 if(visited.contains(next)) { continue; }
                 // Add the new search node to the search frontier.
                 if(bfs) { // BFS, add the node to the back of the queue.
-                    frontier.addLast(new SearchNode<V>(next, curr));
+                    frontier.addLast(new SearchNode<V>(next, currentNode));
                 }
                 else { // DFS, add the node to the front of the queue.
-                    frontier.addFirst(new SearchNode<V>(next, curr));
+                    frontier.addFirst(new SearchNode<V>(next, currentNode));
                 }
             }
             
