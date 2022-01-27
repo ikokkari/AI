@@ -16,15 +16,15 @@ public class IterativeDFS {
      * @param maxDepth Maximum level depth before giving up the search.
      * @return The list of nodes on the shortest path from start node to a goal node.
      */
-    public static <E> List<E> search(
-        Function<E,List<E>> edges,
-        E start,
-        Predicate<E> goalTest,
+    public static <V> List<V> search(
+        Function<V,List<V>> edges,
+        V start,
+        Predicate<V> goalTest,
         int maxDepth
     )
     {
-        LinkedList<E> path = new LinkedList<>();
-        Set<E> discovered = new HashSet<>();
+        LinkedList<V> path = new LinkedList<>();
+        Set<V> discovered = new HashSet<>();
         for(int currDepth = 1; currDepth <= maxDepth; currDepth++) {
             int result = search(edges, start, goalTest, currDepth, path, discovered);
             if(result > 0) { return path; }
@@ -39,13 +39,13 @@ public class IterativeDFS {
     // found path), 0 for failure due to reaching the end of graph, and -1 for failure due
     // to a iterative deepening limit cutoff.
     
-    private static <E> int search(
-        Function<E,List<E>> edges,
-        E start,
-        Predicate<E> goalTest,
-        int depthLimit,     // The remaining depth limit
-        LinkedList<E> path, // The path of nodes accumulated so far.
-        Set<E> discovered   // The set of nodes discovered so far. 
+    private static <V> int search(
+            Function<V,List<V>> edges,
+            V start,
+            Predicate<V> goalTest,
+            int depthLimit,     // The remaining depth limit
+            LinkedList<V> path, // The path of nodes accumulated so far.
+            Set<V> discovered   // The set of nodes discovered so far.
     )
     {
         // Record whether some recursive search has failed due to cutoff.
@@ -59,7 +59,7 @@ public class IterativeDFS {
         // This node has been discovered.
         discovered.add(start); 
         // Loop through the neighbours of the current node.
-        for(E neighbour: edges.apply(start)) {
+        for(V neighbour: edges.apply(start)) {
             // If this neighbour has already been discovered in search, skip it.
             if(discovered.contains(neighbour)) { continue; }
             // Perform a recursive DFS starting from that neighbour node.
