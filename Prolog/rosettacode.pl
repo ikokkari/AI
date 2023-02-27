@@ -136,6 +136,199 @@ splitBy( H, [U|T], LS, [U|RS] ) :-
     U > H,
     splitBy(H, T, LS, RS).
 
+/* https://rosettacode.org/wiki/Babbage_problem */
+
+:- use_module(library(clpfd)).
+
+babbage_(B, B, Sq) :- 
+	B * B #= Sq, 
+	number_chars(Sq, R), 
+	append(_, ['2','6','9','6','9','6'], R).
+babbage_(B, R, Sq) :- 
+	N #= B + 1,
+	babbage_(N, R, Sq).
+	
+babbage :- 
+	once(babbage_(1, Num, Square)), 
+	format('lowest number is ~p which squared becomes ~p~n', [Num, Square]).
+
+/* https://rosettacode.org/wiki/Rot-13 */
+
+rot13(Str, SR) :-
+    string_chars(Str, Sc),
+	maplist(rot, Sc, Sc1),
+	string_to_list(SR, Sc1).
+
+rot(C, C1) :-
+	(   member(C, "abcdefghijklmABCDEFGHIJKLM") -> C1 is C+13;
+	    (	member(C, "nopqrstuvwxyzNOPQRSTUVWXYZ") -> C1 is C-13; C1 = C)).
+
+/* https://rosettacode.org/wiki/Look-and-say_sequence */
+
+look_and_say(L) :-
+	maplist(write, L), nl,
+	encode(L, L1),
+	look_and_say(L1).
+
+% This code is almost identical to the code of "run-length-encoding" 
+encode(In, Out) :-
+	packList(In, R1),
+	append(R1,Out).
+
+
+% use of library clpfd allows packList(?In, ?Out) to works
+% in both ways In --> Out and In <-- Out.
+
+:- use_module(library(clpfd)).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% ?- packList([a,a,a,b,c,c,c,d,d,e], L).
+%  L = [[3,a],[1,b],[3,c],[2,d],[1,e]] .
+% ?- packList(R,  [[3,a],[1,b],[3,c],[2,d],[1,e]]).
+% R = [a,a,a,b,c,c,c,d,d,e] .
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+packList([],[]).
+
+packList([X],[[1,X]]) :- !.
+
+
+packList([X|Rest],[XRun|Packed]):-
+    run(X,Rest, XRun,RRest),
+    packList(RRest,Packed).
+
+
+run(Var,[],[1,Var],[]).
+
+run(Var,[Var|LRest],[N1, Var],RRest):-
+    N #> 0,
+    N1 #= N + 1,
+    run(Var,LRest,[N, Var],RRest).
+
+run(Var,[Other|RRest], [1,Var],[Other|RRest]):-
+    dif(Var,Other).
+
+/* https://rosettacode.org/wiki/Morse_code */
+
+text2morse(Text, Morse) :-
+	string_lower(Text, TextLower),			% rules are in lower case
+	string_chars(TextLower, Chars),			% convert string into list of chars
+	chars2morse(Chars, MorseChars),			% convert each char into morse
+	string_chars(MorsePlusSpace, MorseChars),	% append returned string list into single string
+	string_concat(Morse, ' ', MorsePlusSpace).	% Remove trailing space
+
+chars2morse([], "").
+chars2morse([H|CharTail], Morse) :-
+	morse(H, M),
+	chars2morse(CharTail, MorseTail),
+	string_concat(M,' ', MorseSpace),
+	string_concat(MorseSpace, MorseTail, Morse).
+
+% space
+morse(' ', " ").
+% letters
+morse('a', ".-").
+morse('b', "-...").
+morse('c', "-.-.").
+morse('d', "-..").
+morse('e', ".").
+morse('f', "..-.").
+morse('g', "--.").
+morse('h', "....").
+morse('i', "..").
+morse('j', ".---").
+morse('k', "-.-").
+morse('l', ".-..").
+morse('m', "--").
+morse('n', "-.").
+morse('o', "---").
+morse('p', ".--.").
+morse('q', "--.-").
+morse('r', ".-.").
+morse('s', "...").
+morse('t', "-").
+morse('u', "..-").
+morse('v', "...-").
+morse('w', ".--").
+morse('x', "-..-").
+morse('y', "-.--").
+morse('z', "--..").
+% numbers
+morse('1', ".----").
+morse('2', "..---").
+morse('3', "...--").
+morse('4', "....-").
+morse('5', ".....").
+morse('6', "-....").
+morse('7', "--...").
+morse('8', "---..").
+morse('9', "----.").
+morse('0', "-----").
+% common punctuation
+morse('.', ".-.-.-").
+morse(',', "--..--").
+morse('/', "-..-.").
+morse('?', "..--..").
+morse('=', "-...-").
+morse('+', ".-.-.").
+morse('-', "-....-").
+morse('@', ".--.-.").
+
+
+/* https://rosettacode.org/wiki/Guess_the_number/With_feedback */
+
+main :-
+    play_guess_number.
+
+
+/* Parameteres */
+
+low(1).
+high(10).
+
+
+/* Basic Game Logic */
+
+play_guess_number :-
+    low(Low),
+    high(High),
+    random(Low, High, N),
+    tell_range(Low, High),
+    repeat,                         % roughly, "repeat ... (until) Guess == N "
+        ask_for_guess(Guess),
+        give_feedback(N, Guess),
+    Guess == N.
+
+/* IO Stuff */
+
+tell_range(Low, High) :-
+    format('Guess an integer between ~d and ~d.~n', [Low,High]).
+
+ask_for_guess(Guess) :-
+    format('Guess the number: '),
+    read(Guess).
+
+give_feedback(N, Guess) :-
+    ( \+integer(Guess) -> writeln('Invalid input.')
+    ; Guess < N        -> writeln('Your guess is too low.')
+    ; Guess > N        -> writeln('Your guess is too high.')
+    ; Guess =:= N      -> writeln("Correct!")
+    ).
+
+/* https://rosettacode.org/wiki/Towers_of_Hanoi */
+
+hanoi(N) :- move(N,left,center,right).
+
+move(0,_,_,_) :- !.
+move(N,A,B,C) :-
+    M is N-1,
+    move(M,A,C,B),
+    inform(A,B),
+    move(M,C,B,A).
+
+inform(X,Y) :- write([move,a,disk,from,the,X,pole,to,Y,pole]), nl.
+
 /* http://rosettacode.org/wiki/Fractal_tree */
 
 fractal :-
