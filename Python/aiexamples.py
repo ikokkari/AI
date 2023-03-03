@@ -59,65 +59,60 @@ __gin_ranks = {
 
 
 def count_deadwood(hand):
-    # Sort the hand in order of gin ranks, converting ranks to numbers.
+    M = 666
     hand = sorted([(__gin_ranks[rank], suit) for (rank, suit) in hand])
     hand_set = set(hand)
-    # Precompute how many cards of each rank we have in the hand.
-    rank_counts = dict()
-    for (rank, suit) in hand:
-        rank_counts[rank] = rank_counts.get(rank, 0) + 1
-    best_overall = 666
+    # Counter for how many times each rank appears in hand
+    rank_counts = [sum(1 for (r, s) in hand if r == rank) for rank in range(14)]
+    best_overall = M
 
-    # Recursive backtracking algorithm to find the best arrangement of cards in the hand.
     def backtrack(pos, runs, sets, deadwood_sofar):
         nonlocal best_overall
-        # If current deadwood is worse than the best solution so far, give it up.
         if deadwood_sofar > best_overall:
-            return 666
-        # If all the cards have been examined, compute the deadwood.
+            return M
         if pos == -1:
             if all(len(r) > 2 for r in runs) and all(len(s) > 2 for s in sets):
                 if deadwood_sofar < best_overall:
                     best_overall = deadwood_sofar
                 return 0
             else:
-                return 666
-        # Choose the current card for this level of recursion.
+                return M
         (rank, suit) = hand[pos]
         rank_counts[rank] -= 1
-        best = 666
-
-        # What can we do with the current card? Let's go through the ways.
+        best = M
 
         # Join an existing run?
+        was_run = False
         for r in runs:
             (rank2, suit2) = r[-1]
             if suit == suit2 and rank2 == rank+1:
+                was_run = True
                 r.append((rank, suit))
                 best = min(best, backtrack(pos-1, runs, sets, deadwood_sofar))
                 r.pop()
-        # Start a new run?
-        if (rank-1, suit) in hand_set and (rank-2, suit) in hand_set:
+        # Start a new run
+        if not was_run and (rank-1, suit) in hand_set and (rank-2, suit) in hand_set:
             runs.append([(rank, suit)])
             best = min(best, backtrack(pos-1, runs, sets, deadwood_sofar))
             runs.pop()
         # Join an existing set?
+        was_set = False
         for s in sets:
             (rank2, suit2) = s[-1]
             if rank2 == rank:
+                was_set = True
                 s.append((rank, suit))
                 best = min(best, backtrack(pos-1, runs, sets, deadwood_sofar))
                 s.pop()
         # Start a new set?
-        if rank_counts[rank] > 1:
+        if not was_set and rank_counts[rank] > 1:
             sets.append([(rank, suit)])
             best = min(best, backtrack(pos-1, runs, sets, deadwood_sofar))
             sets.pop()
-        # Leave as deadwood
+        # Leave as deadwood?
         value = rank if rank < 10 else 10
         best = min(best, value + backtrack(pos-1, runs, sets, deadwood_sofar + value))
 
-        # Put the card back in the hand.
         rank_counts[rank] += 1
         return best
 
