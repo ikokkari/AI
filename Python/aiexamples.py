@@ -68,7 +68,7 @@ def count_deadwood(hand):
 
     def backtrack(pos, runs, sets, deadwood_sofar):
         nonlocal best_overall
-        if deadwood_sofar > best_overall:
+        if deadwood_sofar >= best_overall:
             return M
         if pos == -1:
             if all(len(r) > 2 for r in runs) and all(len(s) > 2 for s in sets):
@@ -156,11 +156,10 @@ def laser_aliens(n, aliens):
                         undo_stack.append((r, c))
                         row_aliens[r].remove(c)
             solve(row_idx+1, so_far + len(row_aliens[curr_row]))
-            for (r, c_) in undo_stack:
-                row_aliens[r].add(c_)
+            for (r, c) in undo_stack:
+                row_aliens[r].add(c)
         # Didn't work either way.
         return False
-
 
     solve(0, 0)
     return best_solution
