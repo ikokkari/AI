@@ -129,38 +129,38 @@ def laser_aliens(n, aliens):
     # Sort the rows based on how many aliens are on that row.
     rows = sorted(set(r for (r, c) in aliens), key=lambda r: -len(row_aliens[r]))
 
+    best_solution = n
+
     # Recursive backtracking search to find the solution within given limit.
-    def solve(row_idx, limit):
+    def solve(row_idx, so_far):
+        nonlocal best_solution
         # Negative and positive base cases of the recursion.
-        if limit < 0:
-            return False
+        if so_far >= best_solution:
+            return
         if row_idx == len(rows):
-            return True
+            best_solution = min(best_solution, so_far)
+            return
         curr_row = rows[row_idx]
         # Have all the aliens that were on this row been eliminated already?
         if len(row_aliens[curr_row]) == 0:
-            return solve(row_idx+1, limit)
+            return solve(row_idx+1, so_far)
         # Try shooting one laser through this row.
-        if solve(row_idx+1, limit-1):
-            return True
+        if len(row_aliens[curr_row]) > 1:
+            solve(row_idx+1, so_far+1)
         # Try shooting laser through every column that has an alien on this row.
-        if len(row_aliens[curr_row]) <= limit:
+        if len(row_aliens[curr_row]) + so_far <= best_solution:
             undo_stack = []
             for c in row_aliens[curr_row]:
                 for r in col_aliens[c]:
                     if r != curr_row:
                         undo_stack.append((r, c))
                         row_aliens[r].remove(c)
-            if solve(row_idx+1, limit-len(row_aliens[curr_row])):
-                return True
+            solve(row_idx+1, so_far + len(row_aliens[curr_row]))
             for (r, c_) in undo_stack:
                 row_aliens[r].add(c_)
         # Didn't work either way.
         return False
 
-    # Iterative deepening to look for a solution within the given limit.
-    for limit_ in range(n+1):
-        if solve(0, limit_):
-            return limit_
-    # This line must be unreachable.
-    assert False
+
+    solve(0, 0)
+    return best_solution
