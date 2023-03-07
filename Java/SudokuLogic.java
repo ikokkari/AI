@@ -18,7 +18,7 @@ public class SudokuLogic {
         return 3 * dx + dy;
     }
     // List of neighbours for Sudoku tiles, precomputed below.
-    private static List<List<Integer>> neighbours = new ArrayList<List<Integer>>(81);
+    private static final List<List<Integer>> neighbours = new ArrayList<>(81);
 
     // Executed at class initialization: precompute the list of neighbours for each tile.
     static {
@@ -119,16 +119,14 @@ public class SudokuLogic {
     }
 
     /* A few test boards. */
-    public static void test() {
+    public static void test1() {
         int[][] testBoard = {
                 {0,0,0,0,0,0,0,1,2},
                 {0,0,0,0,0,0,0,0,3},
                 {0,0,2,3,0,0,4,0,0},
-
                 {0,0,1,8,0,0,0,0,5},
                 {0,6,0,0,7,0,8,0,0},
                 {0,0,0,0,0,9,0,0,0},
-
                 {0,0,8,5,0,0,0,0,0},
                 {9,0,0,0,4,0,5,0,0},
                 {4,7,0,0,0,6,0,0,0}
@@ -143,11 +141,9 @@ public class SudokuLogic {
                 {7,9,0,0,0,0,0,0,3},
                 {4,0,0,0,0,0,0,6,0},
                 {8,0,1,0,0,4,0,0,2},
-
                 {0,0,5,0,0,0,0,0,0},
                 {3,0,0,1,0,0,0,0,0},
                 {0,4,0,0,0,6,2,0,9},
-
                 {2,0,0,0,3,0,5,0,6},
                 {0,3,0,6,0,5,4,2,1},
                 {0,0,0,0,0,0,3,0,0}
@@ -162,11 +158,9 @@ public class SudokuLogic {
                 {0,0,0,3,0,0,6,0,0},
                 {9,0,6,0,0,0,0,8,0},
                 {0,0,5,2,0,0,1,0,0},
-
                 {0,0,0,0,2,1,0,0,5},
                 {0,5,0,0,8,0,0,0,0},
                 {3,0,0,0,7,0,0,0,4},
-
                 {5,6,0,0,0,0,7,0,0},
                 {0,0,0,0,0,0,0,6,2},
                 {0,4,3,7,0,0,0,0,0}
@@ -174,5 +168,11 @@ public class SudokuLogic {
 
         solve(testBoard);
         printBoard(testBoard);
+    }
+
+    public static void main(String[] args) {
+        test1();
+        test2();
+        test3();
     }
 }

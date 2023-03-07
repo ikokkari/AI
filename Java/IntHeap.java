@@ -1,5 +1,3 @@
-import java.util.Random;
-
 // Implement a binary heap for integers used to represent literals in SATSolver.
 // The priority queue keeps track of the position of each literal in the queue,
 // and therefore can support operations of removing a literal and updating its
