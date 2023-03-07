@@ -1,22 +1,295 @@
-import java.util.*;
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Scanner;
+import java.util.function.IntUnaryOperator;
+
+// DPLL backtracking SAT Solver with optimizations for unit clauses.
+// Ilkka Kokkarinen, November 5 2018, ilkka.kokkarinen@gmail.com.
 
 public class SATSolver {
-    
-    // Some methods for measuring the effectiveness of the algorithm.
-    private static int callCount = 0;
-    public static int getCallCount() { return callCount; }
-    private static int pureLiteralCount = 0;
-    public static int getPureLiteralCount() { return pureLiteralCount; }
-    
-    // Calculate the index in the solution array where literal is stored.
-    private static int getIdx(int literal) {
-        if(literal < 0) { return 2 * (-literal) - 1; }
-        else { return 2 * literal - 2; }
-    }
 
+    // Encode positive and negative integers into nonnegative indices.
+    private static int idx(int lit) {
+        return lit > 0 ? 2 * (lit-1) : 2 * (-lit) - 1;
+    }       
+   
     /**
-     * Read a SAT problem from a standard DIMACS problem file.
+     * Solve the given instance of propositional logic satisfiability.
+     * @param n Total number of propositional variables 1, ..., {@code n}.
+     * @param clauses The individual clauses given as an array whose each element is an array
+     * representing one clause. A clause is given as integers where positive value means a
+     * positive literal, and a negative value means a negative literal.
+     * @return Array of {@code n+1} truth values whose element in position {@code i} gives
+     * the truth value of propositional variable {@code i}.
+     */
+    public static boolean[] solve(int n, final int[][] clauses) {
+        return solve(n, clauses, false, -1);
+    }
+    
+    /**
+     * Solve the given instance of propositional logic satisfiability.
+     * @param n Total number of propositional variables 1, ..., {@code n}.
+     * @param clauses The individual clauses given as an array where each element is an array
+     * representing one clause. A clause is given as integers where positive value means a
+     * positive literal, and a negative value means a negative literal.
+     * @param verbose Whether this function should print out reports.
+     * @param giveup After how many advances should the search give up. Use -1 for never give up.
+     * @return Array of {@code n+1} truth values whose element in position {@code i} gives
+     * the truth value of propositional variable {@code i}.
+     */
+    public static boolean[] solve(int n, final int[][] clauses, boolean verbose, long giveup) {
+        // Counters for measurement and debugging of this algorithm.
+        long unitClauseC = 0, forwardCheckingC = 0, advanceC = 0;
+        // Whether clauses should be sorted before backtracking begins.
+        final boolean SORT_CLAUSES = true;
+        // Required delay between sorting the literals in a clause.
+        final long SORT_THRESHOLD = 50;
+        
+        // Number of clauses to solve.
+        int m = clauses.length;        
+        // Keep the unsatisfied clauses in dancing list, with m used as sentinel.
+        int[] next = new int[m + 1];
+        int[] prev = new int[m + 1];                
+        for(int i = 0; i <= m; i++) {
+            next[i] = i < m ? i + 1: 0;
+            prev[i] = i > 0 ? i - 1: m;
+        }
+        
+        // List of clauses where each literal appears.
+        List<List<Integer>> literalInClause = new ArrayList<>();
+        // Which level of recursion each literal was taken to the solution.
+        int[] takenAt = new int[2 * n];
+        for(int i = 0; i < 2 * n; i++) { 
+            literalInClause.add(new ArrayList<>());
+            takenAt[i] = -1;
+        }
+        
+        // How many chances each clause has remaining to become true.
+        int[] chances = new int[m + 1];
+        // The set of unit clauses known at the moment.
+        LinkedList<Integer> unitClauses = new LinkedList<Integer>();
+        // The literal used for each level in the current partial solution.
+        int[] literalUsed = new int[m + 1];
+        // The stage of iteration of possibilities at each level.
+        // 0 = try the current literal, 1 = try its negation, 2 = backtrack.
+        int[] stage = new int[m + 1];
+        // Which level each clause became satisfied.
+        int[] satisfiedAt = new int[m];
+        
+        // Fill in the various tables used in the backtracking algorithm.
+        for(int i = 0; i < m; i++) {
+            satisfiedAt[i] = -1;
+            if(clauses[i] == null) { // Just in case.
+                next[prev[i]] = next[i]; prev[next[i]] = prev[i];
+                next[i] = prev[i] = i;
+            }
+            else {
+                chances[i] = clauses[i].length;
+                if(chances[i] == 1) { 
+                    unitClauses.push(i);
+                }
+                for(int lit: clauses[i]) {
+                    literalInClause.get(idx(lit)).add(i);
+                }
+            }
+        }                  
+        
+        // How many unsatisfied clauses each literal still occurs in.
+        int[] inClauseCount = new int[2 * n];
+        // Initialize the counters for literals in clauses.
+        for(int lit = -n; lit <= n; lit++) {
+            if(lit != 0) {
+                inClauseCount[idx(lit)] = literalInClause.get(idx(lit)).size();
+            }
+        }        
+        
+        if(SORT_CLAUSES) {
+            // How many clauses the literals in the given clause connect to.
+            IntUnaryOperator clauseConnections = c -> {
+                int total = 0;
+                for(int lit: clauses[c]) { total += inClauseCount[idx(lit)]; }
+                return total;
+            };
+            
+            // Comparator to sort clauses based on their connections to clauses.
+            Comparator<Integer> clauseComparator = (c1, c2) -> {
+                int n1 = clauseConnections.applyAsInt(c1);
+                int n2 = clauseConnections.applyAsInt(c2);
+                return n2 - n1;
+            };
+            
+            // Rearrange the dancing list based on sorting by these connection counts. 
+            ArrayList<Integer> clausePerm = new ArrayList<>();
+            for(int i = 0; i < m; i++) {
+                if(next[i] != i) { clausePerm.add(i); }
+            }
+            if(verbose) {
+                System.out.println("Instance with " + n + " variables and " +
+                clausePerm.size() + " clauses, of which " + unitClauses.size() + " are unit.");
+            }
+            Collections.sort(clausePerm, clauseComparator);        
+            int curr = clausePerm.get(0); next[m] = curr; prev[curr] = m;
+            for(int i = 1; i < clausePerm.size(); i++) {
+                int c = clausePerm.get(i);
+                next[curr] = c; prev[c] = curr;
+                curr = c;
+            }
+            next[curr] = m; prev[m] = curr;
+        }
+        
+        // Whether the choice of the literal at each level was forced by previous choices.
+        boolean[] forcedChoice = new boolean[m];
+        // When was each clause last sorted.
+        long[] lastSorted = new long[m];
+        
+        Arrays.fill(lastSorted, -SORT_THRESHOLD - 1);
+        // The level that the iterated backtracking is currently at.
+        int level = 0;
+        
+        // Backtrack until return from top level, or every clause is satisfied.
+        while(level >= 0 && next[m] != m) {            
+            // If the current level does not have an assigned literal, choose one.
+            if(literalUsed[level] == 0) {                
+                int c = -1; // Unsatisfied clause to take the literal from.
+                forcedChoice[level] = false;
+                // Use an unsatisfied unit clause, if one exists.
+                while(unitClauses.size() > 0) {
+                    int cc = unitClauses.pop();
+                    if(satisfiedAt[cc] == -1) { 
+                        c = cc; unitClauseC++; forcedChoice[level] = true; break; 
+                    }
+                }
+                // Otherwise, use an available literal from the next unsatisfied clause.
+                if(c == -1) {
+                    c = next[m]; assert chances[c] > 1; // Not a unit clause...
+                    // Sort the literals of the chosen clause based on remaining clause counts.
+                    if(advanceC - lastSorted[c] > SORT_THRESHOLD) {
+                        lastSorted[c] = advanceC;
+                        int[] cc = clauses[c];
+                        for(int i = 1; i < cc.length; i++) {
+                            assert takenAt[idx(cc[i])] == -1;
+                            int j = i;
+                            while(j > 0 && inClauseCount[idx(cc[j])] > inClauseCount[idx(cc[j-1])]) {
+                                int tmp = cc[j]; cc[j] = cc[j-1]; cc[j-1] = tmp; j--;
+                            }
+                        }    
+                    }
+                }
+                // From the chosen clause, use the first literal that can still be made true.                
+                for(int lit: clauses[c]) { 
+                    if(takenAt[idx(-lit)] == -1) { literalUsed[level] = lit; break; }
+                }                
+            }            
+            
+            // Use the literal that was chosen for this level. One must now exist.
+            int lit = literalUsed[level]; assert lit != 0;
+            
+            // Stage 0: Try making the chosen literal true and see what happens.
+            // Stage 1: Try making the chosen literal false and see what happens.
+            // Stage 2: Backtrack to most recent earlier choice point.
+            
+            // If at stage 1 or 2, undo the effect of making current literal true. However,
+            // skip the undo of stage 1 if the choice of that literal was forced.
+            if(stage[level] > 0 && (stage[level] == 1 || !forcedChoice[level])) {
+                int opp = stage[level] == 1 ? lit: -lit;
+                // That literal is no longer part of the solution.
+                takenAt[idx(opp)] = -1;
+                // Clauses that became satisfied at this level are no longer satisfied.
+                for(int c: literalInClause.get(idx(opp))) {
+                    if(satisfiedAt[c] == level) {
+                        satisfiedAt[c] = -1;
+                        prev[next[c]] = next[prev[c]] = c; // Back to dancing list you go.
+                        for(int li: clauses[c]){
+                            if(takenAt[idx(li)] == -1 && takenAt[idx(-li)] == -1) {
+                                ++inClauseCount[idx(li)];
+                            }
+                        }
+                    }
+                }
+                // Each clause that contains the opposite literal gets another chance.
+                for(int c: literalInClause.get(idx(-opp))) { 
+                    if(satisfiedAt[c] == -1) { ++chances[c]; }
+                }
+            }            
+
+            // If at stage 0 or 1, propagate the effects of making this literal true.
+            // However, skip the stage 1 if the choice of literal was forced at this level.
+            if(stage[level] < 2 && (stage[level] == 0 || !forcedChoice[level])) {
+                // Use the literal at stage 0, and its negation at stage 1.
+                lit = stage[level] == 0 ? lit: -lit; 
+                takenAt[idx(lit)] = level;
+                boolean itsStillGood = false;
+                int unitClausesAdded = 0;
+                for(int c: literalInClause.get(idx(lit))) {
+                    if(satisfiedAt[c] == -1) {
+                        itsStillGood = true; // Literal becomes good.
+                        satisfiedAt[c] = level;
+                        prev[next[c]] = prev[c]; next[prev[c]] = next[c];
+                        // Literals of that clause now occur in one fewer unsatisfied clause.
+                        for(int li: clauses[c]) {
+                            if(takenAt[idx(li)] == -1 && takenAt[idx(-li)] == -1) {
+                                --inClauseCount[idx(li)];
+                            }
+                        }
+                    }
+                }                
+                // Forward checking cutoff to recognize a futile branch.
+                for(int c: literalInClause.get(idx(-lit))) {
+                    if(satisfiedAt[c] == -1) {
+                        // If some clause has become impossible to satisfy, force a cutoff.
+                        if(--chances[c] == 0) { 
+                            if(itsStillGood) { forwardCheckingC++; }
+                            itsStillGood = false;
+                        }
+                        // Bring the clause into the set of known unit clauses.
+                        else if(chances[c] == 1) { 
+                            unitClauses.push(c); unitClausesAdded++; 
+                        }
+                    }
+                }
+                
+                stage[level]++; // Advance to next stage at the current level.
+                if(itsStillGood) { // Advance to the next level, or give up.
+                    level = (++advanceC != giveup) ? level + 1 : -1;
+                }
+                else { // Cancel all unit clauses added at this stage.
+                    for(int i = 0; i < unitClausesAdded; i++) { unitClauses.pop(); }
+                }
+            }
+            else { // If at stage 2 at current level, backtrack to previous level.
+                unitClauses.clear(); // None of the added unit clauses is good any more.
+                literalUsed[level] = stage[level] = 0;
+                level--;
+            } 
+        } // End of while-loop
+        
+        if(verbose) {
+            System.out.print(advanceC + " advances, ");
+            System.out.print(unitClauseC + " unit clauses, ");
+            System.out.println(forwardCheckingC + " forward checking cutoffs.");
+        }
+        
+        // Reconstruct the solution from the literals that were taken in.
+        if(next[m] == m) { // No unsatisfied clauses remain, so a solution was found.
+            boolean[] result = new boolean[n + 1];
+            for(int i = 0; i < level; i++) {
+                int lit = literalUsed[i];
+                if(lit > 0 && takenAt[idx(lit)] > -1) { result[lit] = true; }
+                else if(lit < 0 && takenAt[idx(-lit)] > -1) { result[-lit] = true; }                 
+            }
+            return result;
+        }
+        else { return null; } // No solution was found.
+    }
+    
+    /**
+     * Read the problem instance of SAT from a standard DIMACS file.
      * @param filename The name of the file.
      * @return The solution vector that was found, or null if there is no solution.
      */
@@ -42,324 +315,17 @@ public class SATSolver {
                 clauses[cloc++] = clause;
             }
         }
-        System.out.println("Read problem with " + vars + " variables and " + cloc + " clauses."); 
+        System.out.println("Read SAT instance with " + vars + " variables and " + cloc + " clauses."); 
         long startTime = System.currentTimeMillis();
-        boolean[] solution = SATSolver.solveDPLL(vars, clauses);
+        boolean[] solution = SATSolver.solve(vars, clauses, true, -1);
         long endTime = System.currentTimeMillis();
-        System.out.println("Solved in " + (endTime - startTime) + " ms with "
-        + SATSolver.getCallCount() + " recursive calls.");
+        System.out.println("Finished in " + (endTime - startTime) + " ms.");
+        if(solution == null) { System.out.println("This instance was unsatisfiable."); }
+        else { 
+            int count = 0;
+            for(int i = 1; i <= vars; i++) { if(solution[i]) count++; }
+            System.out.println("Solution has " + count + " variables set true.");
+        }
         return solution;
-    }
-    
-    /**
-     * Solve the set of CNF clauses for variables 1, ..., {@code n} using the DPLL algorithm.
-     * @param n The number of propositional variables in the system.
-     * @param clauses The array of clauses. Each row of this two-dimensional array is one clause,
-     * the elements representing the literals of the clause. Positive element {@code x} stands for the 
-     * positive literal <i>x</i>, negative element {@code -x} stands for the negative literal <i>not-x.</i>
-     * @return Solution array of {@code n + 1} elements giving the truth value of each variable,
-     * or {@code null} if there is no solution to the clauses.
-     */
-    public static boolean[] solveDPLL (int n, int[][] clauses) {
-        // Initialize the counters.
-        callCount = pureLiteralCount = 0;
-        // Initialize the solution array and the active set data structures (see below).
-        solution = new int[2 * n];
-        active.clear();
-        activeUnits.clear();
-        inClauses = new ArrayList<List<Integer>>();
-        for(int i = 0; i < 2 * n; i++) {
-            inClauses.add(new ArrayList<Integer>());
-        }
-        clauseCount = new int[2 * n];
-        possible = new int[2 * clauses.length];
-        // Preprocess the clauses.
-        cloc = 0;
-        SATSolver.clauses = new int[clauses.length][];
-        for(int c = 0; c < clauses.length; c++) {
-            // Ignore nonexistent and empty clauses.
-            if(clauses[c] == null || clauses[c].length == 0) { continue; }
-            SATSolver.clauses[cloc] = clauses[c];
-            // Initially, any one of the literals could be made true.
-            possible[cloc] = SATSolver.clauses[cloc].length;
-            // Add the clause to the approriate set of active clauses.
-            if(possible[cloc] == 1) { 
-                activeUnits.add(cloc);
-            } 
-            else { 
-                active.add(cloc);
-            }
-            for(int literal: SATSolver.clauses[cloc]) {
-                if(literal == 0 || literal < -n || literal > n) {
-                    throw new IllegalArgumentException("Illegal literal value " + literal + " in clause " + c);
-                }
-                inClauses.get(getIdx(literal)).add(cloc);
-                clauseCount[getIdx(literal)]++;
-            }
-            cloc++;
-        }
-        
-        inactive = new boolean[SATSolver.clauses.length];
-        decisions = new int[n + 1];
-        // Initialize the queue of the literals to examine.
-        literalQueue = new IntHeap(clauseCount, n, true);
-        for(int literal = 1; literal <= n; literal++) {
-            literalQueue.offer(literal); 
-            literalQueue.offer(-literal);
-        }
-        // Solve the system recursively.
-        if(DPLL(1) > -1) { return null; }
-        // Convert the integer solution array to truth values to return to caller.
-        boolean[] solutionB = new boolean[n + 1];
-        for(int literal = 1; literal <= n; literal++) {
-            solutionB[literal] = solution[getIdx(literal)] > 0;
-        }
-        return solutionB;
-    }
-
-    // The state variables of the search during the recursive backtracking DPLL algorithm.
-    
-    // Stack used to remember which actions to unroll when backtracking.
-    private static LinkedList<Integer> stack = new LinkedList<Integer>();
-    // List of literals that are known to be currently pure.
-    private static LinkedList<Integer> pureLiterals = new LinkedList<Integer>();
-    // Current state of each literal. If zero, unset. If positive, set true at that
-    // level of recursion. If negative, set false at that level of recursion.
-    private static int[] solution;
-    // The list of clauses in which each literal is in.
-    private static List<List<Integer>> inClauses;
-    // The set of non-unit clauses that are currently active.
-    private static Set<Integer> active = new HashSet<>();
-    // The set of unit clauses that are currently active.
-    private static TreeSet<Integer> activeUnits = new TreeSet<>();
-    // Array of counters of how many clauses are still possible for each literal.
-    private static int[] possible;
-    // The clauses as arrays of integer literals.
-    private static int[][] clauses;
-    private static int cloc = 0;
-    // Quick lookup table of which clauses are no longer active.
-    private static boolean[] inactive;
-    // The priority queue that contains the literals that are still unassigned.
-    private static IntHeap literalQueue;
-    // Counter of how many active clauses each literal appears in.
-    private static int[] clauseCount;
-    // Decisions made in this recursion path.
-    private static int[] decisions;
-    
-    // Named constants used as opcodes when unrolling the stack.
-    private static final int MARK = Integer.MAX_VALUE;
-    private static final int REMOVE_UNIT = Integer.MAX_VALUE - 1;
-    private static final int REMOVE_ACT = Integer.MAX_VALUE - 2;
-    private static final int TO_UNIT = Integer.MAX_VALUE - 3;
-    private static final int DECREMENT = Integer.MAX_VALUE - 4;
-    private static final int LITERAL = Integer.MAX_VALUE - 5;
-    private static final int ENQUEUE = Integer.MAX_VALUE - 6;
-    
-    /* 
-     * Remove all clauses that contain the literal made true from the active sets.
-     */
-    private static void makeLiteralTrue(int level, int literal) {
-        int idx = getIdx(literal);
-        int idxn = getIdx(-literal);
-        
-        // Make this literal true and its negation false in the current solution.
-        solution[idx] = +level;
-        solution[idxn] = -level;
-        // Add the correct opcodes to unroll this decision when backtracking.
-        stack.addLast(literal);
-        stack.addLast(LITERAL);
-       
-        // For each clause where this literal appears, remove it from the active sets.
-        for(int cl: inClauses.get(idx)) {
-            // Ignore the "doubly true" clauses already made true by some previous literal.
-            if(inactive[cl]) { continue; }
-            // Decrease the clause count for every literal that appears in this clause.
-            for(int lit: clauses[cl]) {
-                --clauseCount[getIdx(lit)];
-                literalQueue.decrease(lit);
-                // If this literal no longer appears in any active clause, its negation becomes pure.
-                if(clauseCount[getIdx(lit)] == 0 && clauseCount[getIdx(-lit)] > 0) {
-                    pureLiterals.add(-lit);
-                }
-            }
-            // Remove the clause from the appropriate set.
-            inactive[cl] = true;
-            assert possible[cl] > 0; 
-            if(possible[cl] == 1) { // This clause is a unit clause.
-                assert activeUnits.contains(cl);
-                activeUnits.remove(cl);
-                stack.addLast(cl); 
-                stack.addLast(REMOVE_UNIT);
-            }
-            else { // This clause is not an unit clause.
-                assert active.contains(cl);
-                active.remove(cl);
-                stack.addLast(cl); 
-                stack.addLast(REMOVE_ACT);
-            }
-        }
-        
-        // For each active clause where the negation of this literal appears, decrement the count
-        // of possible literals that still remain in that clause.
-        for(int cl: inClauses.get(idxn)) {
-            // Again, ignore the clauses that are already made true by previous assignments.
-            if(inactive[cl]) { continue; }
-            // That clause now has one fewer possible literals that could be made true.
-            --possible[cl];
-            // If that clause becomes a unit clause, move it to the set of active unit clauses.
-            if(possible[cl] == 1) {
-                assert active.contains(cl);
-                active.remove(cl);
-                activeUnits.add(cl);
-                stack.addLast(cl);
-                stack.addLast(TO_UNIT);
-            }
-            else { // Otherwise, just note that its possible literals count was decremented.
-                stack.addLast(cl);
-                stack.addLast(DECREMENT);
-            }
-        }
-    }
-
-    /*
-     * Unroll the actions that were performed when making some literal true.  
-     */
-    private static void unrollStack() {
-        do {
-            // Find out which action to unroll. 
-            int op = stack.removeLast();
-            // All actions have been unrolled at this level.
-            if(op == MARK) { return; }
-            // Pop the operand of the action from the stack.
-            int cl = stack.removeLast();
-            // Undo removing the clause from the set of active unit clauses.
-            if(op == REMOVE_UNIT) {
-                assert inactive[cl];
-                activeUnits.add(cl);
-                inactive[cl] = false;
-                for(int lit: clauses[cl]) { 
-                    clauseCount[getIdx(lit)]++;
-                    literalQueue.increase(lit);
-                }
-            }
-            // Undo removing the clause from the set of active non-unit clauses.
-            else if(op == REMOVE_ACT) {
-                assert inactive[cl];
-                active.add(cl);
-                inactive[cl] = false;
-                for(int lit: clauses[cl]) {
-                    clauseCount[getIdx(lit)]++;
-                    literalQueue.increase(lit);
-                }
-            }
-            // Undo changing the clause from non-unit clause to unit clause.
-            else if(op == TO_UNIT) {
-                assert activeUnits.contains(cl);
-                activeUnits.remove(cl);
-                active.add(cl);
-                possible[cl]++;
-            }
-            // Undo decrementing the possible literal count of this clause.
-            else if(op == DECREMENT) {
-                possible[cl]++;
-            }
-            // Undo setting the value of a literal whose value was forced. 
-            else if(op == LITERAL) {
-                solution[getIdx(cl)] = 0; // cl is here a literal, not a clause...
-                solution[getIdx(-cl)] = 0;
-            }
-            // Undo taking a literal from the queue when it was already assigned.
-            else if(op == ENQUEUE) {
-                literalQueue.offer(cl); // cl is here a literal, not a clause
-            }
-            else { assert false; } // No other possible actions exist.
-        } while(true);
-    }
-
-    /*
-     * The recursive implementation of the DPLL algorithm to solve a system of CNF formulas.
-     */
-    private static int DPLL(int level) {
-        // Place a mark to the stack so that unrolling this action knows where to stop.
-        stack.addLast(MARK);
-        callCount++;
-        
-        boolean unitClauseCutoff = false; // Did any unit clause create a contradiction?
-        int jumpLevel = level - 1; // What level to return from this level.
-        // Unit clause and pure literal propagation are handled in a while-loop without
-        // growing the recursion stack, since neither action involves any choice.
-        unitClauseLoop:
-        while(pureLiterals.size() > 0 || activeUnits.size() > 0) {
-            if(activeUnits.size() > 0) {
-                int c = activeUnits.first(); // The unit clause to process.
-                // Find the one literal that is still unassigned in this clause.
-                for(int literal: clauses[c]) {
-                    int idx = getIdx(literal);    
-                    if(solution[idx] == 0) { // This is the one
-                        int idxn = getIdx(-literal);
-                        // Check the clauses that contain negated literal to create cutoff.
-                        for(int cl: inClauses.get(idxn)) {
-                            if(!inactive[cl] && possible[cl] == 1) {
-                                pureLiterals.clear(); unitClauseCutoff = true; break unitClauseLoop;
-                            }
-                        }
-                        makeLiteralTrue(level, literal);
-                        continue unitClauseLoop;
-                    }
-                }
-                assert false; // Unreachable, as every unit clause must have one unassigned literal.
-            }
-            else {
-                pureLiteralCount++;
-                int literal = pureLiterals.removeFirst();
-                assert clauseCount[getIdx(-literal)] == 0;
-                int idx = getIdx(literal);
-                // Unit clause elimination might have already done this, so better check.
-                if(solution[idx] == 0 && clauseCount[idx] > 0) {
-                    makeLiteralTrue(level, literal);
-                }
-            }
-        }
-
-        if(!unitClauseCutoff) {
-            // No active clauses remain, so the entire problem has been solved.
-            if(active.size() == 0) { return -1; }
-            int literal; // The literal to process at this level of recursion.
-            do { // Pop the next literal from the queue until we get an unassigned one.
-                literal = literalQueue.poll();
-                if(solution[getIdx(literal)] != 0) {
-                    stack.addLast(literal); stack.addLast(ENQUEUE);
-                }
-            } while(solution[getIdx(literal)] != 0);
-
-            // Choose the order in which way to try the branches for this literal.
-            int lit;
-            if(clauseCount[getIdx(literal)] < clauseCount[getIdx(-literal)]) { lit = -literal; }
-            else { lit = literal; }
-            // Recursively try out both ways to assign this literal and its negation.
-            for(int i = 0; i < 2; i++) {
-                // Place a mark to the stack so that unrolling this action knows where to stop.
-                stack.addLast(MARK);
-                // Make the chosen literal true and prune the active clauses accordingly.
-                decisions[level] = lit;
-                makeLiteralTrue(level, lit);
-                // Continue the recursion from the reduced set of active clauses.
-                int result = DPLL(level + 1);
-                // If a solution is found, return it posthaste without unrolling the decisions.
-                if(result == -1) { return result; }
-                // Unroll the choice of making this literal true.
-                unrollStack();
-                // If forced to backjump, no point trying out the other branch.
-                if(result < level) { break; }
-                //Try the negated literal for the next round of this loop.
-                lit = -lit;
-            }
-            // Push the original literal back to the queue.
-            literalQueue.offer(literal);
-        }
-
-        // Unroll the actions done by unit clauses and pure literals, and return to the previous level.
-        unrollStack();
-        return jumpLevel;
     }
 }

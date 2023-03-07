@@ -1,8 +1,5 @@
-import java.util.*;
-import java.util.function.*;
-
-// Demonstrate the SATSolver class by encoding a Sudoku poblem into propositional logic clauses
-// and solving it there, translating the solution back to the Sudoku solution.
+import java.util.ArrayList;
+import java.util.List;
 
 public class SudokuLogic {
 
@@ -50,7 +47,7 @@ public class SudokuLogic {
     public static boolean solve(int[][] board) {
         int loc = 0;
         int[][] clauses = new int[7371][];
-
+        
         // If a tile has value v, then none of its neighbours can have the value v.
         for(int i = 0; i < 81; i++) {
             int v = board[getX(i)][getY(i)];
@@ -75,6 +72,7 @@ public class SudokuLogic {
             }
         }
 
+        
         // Every tile must have at least one value. (We don't need to constrain each tile to
         // have at most one value, since the neighbour tile constraints will ensure that.)
         for(int i = 0; i < 81; i++) {
@@ -92,15 +90,12 @@ public class SudokuLogic {
                 c[0] = litIdx(x, y, board[x][y] - 1);
                 clauses[loc++] = c;
             }
-        }
-        
-        System.out.println("Created " + loc + " clauses for Sudoku.");
+        }        
         
         long startTime = System.currentTimeMillis();
-        boolean[] solution = SATSolver.solveDPLL(9 * 9 * 9, clauses);
+        boolean[] solution = SATSolver.solve(9 * 9 * 9, clauses, true, -1);
         long endTime = System.currentTimeMillis();
-        System.out.println("Solved in " + (endTime - startTime) + " ms with "
-        + SATSolver.getCallCount() + " recursive calls.");
+        System.out.println("Solution found in " + (endTime - startTime) + " ms.");
         
         for(int x = 0; x < 9; x++) {
             for(int y = 0; y < 9; y++) {
@@ -122,23 +117,62 @@ public class SudokuLogic {
             System.out.println("");
         }
     }
-    
-    public static void main(String[] args) {
-        // https://puzzling.stackexchange.com/questions/305/why-is-this-considered-to-be-the-worlds-hardest-sudoku
+
+    /* A few test boards. */
+    public static void test() {
         int[][] testBoard = {
-            {8,0,0,0,0,0,0,0,0},
-            {0,0,3,6,0,0,0,0,0},
-            {0,7,0,0,9,0,2,0,0},
+                {0,0,0,0,0,0,0,1,2},
+                {0,0,0,0,0,0,0,0,3},
+                {0,0,2,3,0,0,4,0,0},
 
-            {0,5,0,0,0,7,0,0,0},
-            {0,0,0,0,4,5,7,0,0},
-            {0,0,0,1,0,0,0,3,0},
+                {0,0,1,8,0,0,0,0,5},
+                {0,6,0,0,7,0,8,0,0},
+                {0,0,0,0,0,9,0,0,0},
 
-            {0,0,1,0,0,0,0,6,8},
-            {0,0,8,5,0,0,0,1,0},
-            {0,9,0,0,0,0,4,0,0}
-            };            
+                {0,0,8,5,0,0,0,0,0},
+                {9,0,0,0,4,0,5,0,0},
+                {4,7,0,0,0,6,0,0,0}
+            };
+
         solve(testBoard);
-        printBoard(testBoard);        
+        printBoard(testBoard);
+    }
+
+    public static void test2() {
+        int[][] testBoard = {
+                {7,9,0,0,0,0,0,0,3},
+                {4,0,0,0,0,0,0,6,0},
+                {8,0,1,0,0,4,0,0,2},
+
+                {0,0,5,0,0,0,0,0,0},
+                {3,0,0,1,0,0,0,0,0},
+                {0,4,0,0,0,6,2,0,9},
+
+                {2,0,0,0,3,0,5,0,6},
+                {0,3,0,6,0,5,4,2,1},
+                {0,0,0,0,0,0,3,0,0}
+            };
+
+        solve(testBoard);
+        printBoard(testBoard);
+    }
+    
+    public static void test3() {
+        int[][] testBoard = {
+                {0,0,0,3,0,0,6,0,0},
+                {9,0,6,0,0,0,0,8,0},
+                {0,0,5,2,0,0,1,0,0},
+
+                {0,0,0,0,2,1,0,0,5},
+                {0,5,0,0,8,0,0,0,0},
+                {3,0,0,0,7,0,0,0,4},
+
+                {5,6,0,0,0,0,7,0,0},
+                {0,0,0,0,0,0,0,6,2},
+                {0,4,3,7,0,0,0,0,0}
+            };
+
+        solve(testBoard);
+        printBoard(testBoard);
     }
 }
