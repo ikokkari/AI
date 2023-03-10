@@ -27,7 +27,6 @@ public class SudokuLogic {
         }
         for(int i = 0; i < 81; i++) {
             for(int j = i + 1; j < 81; j++) {
-                if(i == j) { continue; } // No tile is its own neighbour.
                 // Tiles with same x, same y or same block number are neighbours.
                 if(getX(i) == getX(j) || getY(i) == getY(j) || getB(i) == getB(j)) {
                     neighbours.get(i).add(j);
@@ -45,7 +44,7 @@ public class SudokuLogic {
      * @return Truth value telling if search was successful, in which case the solution is in the {@code board} array.
      */
     public static boolean solve(int[][] board) {
-        int loc = 0;
+        int currPos = 0;
         int[][] clauses = new int[7371][];
         
         // If a tile has value v, then none of its neighbours can have the value v.
@@ -60,14 +59,14 @@ public class SudokuLogic {
                         int[] c = new int[2];
                         c[0] = -litIdx(getX(i), getY(i), vv);
                         c[1] = -litIdx(getX(n), getY(n), vv);
-                        clauses[loc++] = c;
+                        clauses[currPos++] = c;
                     }
                 }
                 // If a tile has a known value, none of its neighbours can have that value.
                 else {
                     int[] c = new int[1]; // Nice unit clauses to propagate in the solver.
                     c[0] = -litIdx(getX(n), getY(n), v - 1);
-                    clauses[loc++] = c;
+                    clauses[currPos++] = c;
                 }
             }
         }
@@ -78,25 +77,25 @@ public class SudokuLogic {
         for(int i = 0; i < 81; i++) {
             int x = getX(i);
             int y = getY(i);
+            int[] c;// Another nice unit clause to propagate.
             if(board[x][y] == 0) {
-                int[] c = new int[9];
+                c = new int[9];
                 for(int v = 0; v < 9; v++) {
                     c[v] = litIdx(x, y, v);
                 }
-                clauses[loc++] = c;
             }
             else {
-                int[] c = new int[1]; // Another nice unit clause to propagate.
+                c = new int[1];
                 c[0] = litIdx(x, y, board[x][y] - 1);
-                clauses[loc++] = c;
             }
+            clauses[currPos++] = c;
         }        
         
         long startTime = System.currentTimeMillis();
         boolean[] solution = SATSolver.solve(9 * 9 * 9, clauses, true, -1);
         long endTime = System.currentTimeMillis();
         System.out.println("Solution found in " + (endTime - startTime) + " ms.");
-        
+        assert solution != null;
         for(int x = 0; x < 9; x++) {
             for(int y = 0; y < 9; y++) {
                 for(int v = 0; v < 9; v++) {

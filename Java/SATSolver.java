@@ -13,6 +13,8 @@ import java.util.function.IntUnaryOperator;
 
 public class SATSolver {
 
+    private static final int UNASSIGNED = -1;
+
     // Encode positive and negative integers into non-negative indices.
     private static int idx(int lit) {
         return lit > 0 ? 2 * (lit-1) : 2 * (-lit) - 1;
@@ -51,68 +53,73 @@ public class SATSolver {
         final long SORT_THRESHOLD = 50;
         
         // Number of clauses to solve.
-        int m = clauses.length;        
-        // Keep the unsatisfied clauses in dancing list, with m used as sentinel.
+        int m = clauses.length;
+        int HEAD = m;
+        // Keep the unsatisfied clauses in dancing list, with extra node m used as sentinel header.
         int[] next = new int[m + 1];
         int[] prev = new int[m + 1];                
         for(int i = 0; i <= m; i++) {
-            next[i] = i < m ? i + 1: 0;
-            prev[i] = i > 0 ? i - 1: m;
+            next[i] = i < HEAD ? i + 1: 0;
+            prev[i] = i > 0 ? i - 1: HEAD;
         }
         
         // List of clauses where each literal appears.
         List<List<Integer>> literalInClause = new ArrayList<>();
-        // Which level of recursion each literal was taken to the solution.
+        // Which recursionLevel of recursion each literal was taken to the solution.
         int[] assignedAtLevel = new int[2 * n];
-        for(int i = 0; i < 2 * n; i++) { 
+        for(int proposition = 0; proposition < 2 * n; proposition++) {
             literalInClause.add(new ArrayList<>());
-            assignedAtLevel[i] = -1;
+            assignedAtLevel[proposition] = UNASSIGNED;
         }
         
         // How many chances each clause has remaining to become true.
         int[] chances = new int[m + 1];
-        // The set of unit clauses known at the moment.
+        // List of unit clauses known at the moment.
         LinkedList<Integer> unitClauses = new LinkedList<Integer>();
-        // The literal used for each level in the current partial solution.
+        // The literal that was used in each recursionLevel in current partial solution.
         int[] literalUsed = new int[m + 1];
-        // The iterationStage of iteration of possibilities at each level.
+        // The iterationStage of iteration of possibilities at each recursionLevel.
         // 0 = try the current literal, 1 = try its negation, 2 = backtrack.
         int[] iterationStage = new int[m + 1];
-        // Which level each clause became satisfied.
+        // At which recursionLevel each clause became satisfied.
         int[] satisfiedAtLevel = new int[m];
         
         // Fill in the various tables used in the backtracking algorithm.
-        for(int i = 0; i < m; i++) {
-            satisfiedAtLevel[i] = -1;
-            if(clauses[i] == null) { // Just in case.
-                next[prev[i]] = next[i]; prev[next[i]] = prev[i];
-                next[i] = prev[i] = i;
+        for(int clause = 0; clause < m; clause++) {
+            satisfiedAtLevel[clause] = UNASSIGNED;
+            if(clauses[clause] == null) { // Just in case the caller was sloppy.
+                next[prev[clause]] = next[clause]; prev[next[clause]] = prev[clause];
+                next[clause] = prev[clause] = clause;
             }
             else {
-                chances[i] = clauses[i].length;
-                if(chances[i] == 1) { 
-                    unitClauses.push(i);
+                chances[clause] = clauses[clause].length;
+                if(chances[clause] == 1) {
+                    unitClauses.push(clause);
                 }
-                for(int lit: clauses[i]) {
-                    literalInClause.get(idx(lit)).add(i);
+                for(int lit: clauses[clause]) {
+                    literalInClause.get(idx(lit)).add(clause);
                 }
             }
         }                  
         
         // How many unsatisfied clauses each literal still occurs in.
-        int[] inClauseCount = new int[2 * n];
+        int[] inActiveClausesCount = new int[2 * n];
         // Initialize the counters for literals in clauses.
         for(int lit = -n; lit <= n; lit++) {
             if(lit != 0) {
-                inClauseCount[idx(lit)] = literalInClause.get(idx(lit)).size();
+                inActiveClausesCount[idx(lit)] = literalInClause.get(idx(lit)).size();
             }
         }        
-        
+
+        // Sort the clauses according to how many other clauses their literals are connected to.
         if(SORT_CLAUSES) {
             // How many clauses the literals in the given clause connect to.
             IntUnaryOperator clauseConnections = c -> {
                 int total = 0;
-                for(int lit: clauses[c]) { total += inClauseCount[idx(lit)]; }
+                for(int lit: clauses[c]) {
+                    total += 2 * inActiveClausesCount[idx(lit)]; // Same literal, bigger weight
+                    total += inActiveClausesCount[idx(-lit)]; // Opposite literal, some weight
+                }
                 return total;
             };
             
@@ -132,66 +139,75 @@ public class SATSolver {
                 System.out.println("Instance with " + n + " variables and " +
                 clausePerm.size() + " clauses, of which " + unitClauses.size() + " are unit.");
             }
+
+            // Sort the permutation of clause indices.
             clausePerm.sort(clauseComparator);
+
+            // Re-link all the clauses according to the sorted permutation.
             int curr = clausePerm.get(0);
-            next[m] = curr;
-            prev[curr] = m;
-            for(int i = 1; i < clausePerm.size(); i++) {
-                int c = clausePerm.get(i);
-                next[curr] = c; prev[c] = curr;
-                curr = c;
+            next[HEAD] = curr;
+            prev[curr] = HEAD;
+            for(int clauseIndex = 1; clauseIndex < clausePerm.size(); clauseIndex++) {
+                int clause = clausePerm.get(clauseIndex);
+                next[curr] = clause; prev[clause] = curr;
+                curr = clause;
             }
-            next[curr] = m; prev[m] = curr;
+            next[curr] = HEAD; prev[HEAD] = curr;
         }
         
-        // Whether the choice of the literal at each level was forced by previous choices.
+        // Whether the choice of the literal at each recursionLevel was forced by previous choices.
         boolean[] forcedChoice = new boolean[m];
-        // When each clause was last sorted.
+        // Time stamps for when the propositions inside each clause were last sorted.
         long[] lastSorted = new long[m];
         
         Arrays.fill(lastSorted, -SORT_THRESHOLD - 1);
-        // The level that the iterated backtracking is currently at.
-        int level = 0;
+        // The recursionLevel that the iterated backtracking is currently at.
+        int recursionLevel = 0;
         
-        // Backtrack until return from top level, or every clause is satisfied.
-        while(level >= 0 && next[m] != m) {            
-            // If the current level does not have an assigned literal, choose one.
-            if(literalUsed[level] == 0) {                
-                int c = -1; // Unsatisfied clause to take the literal from.
-                forcedChoice[level] = false;
+        // Backtrack until return from top recursionLevel, or every clause is satisfied.
+        while(recursionLevel >= 0 && next[HEAD] != HEAD) {
+            // If the current recursionLevel does not have an assigned literal, find and choose one now.
+            if(literalUsed[recursionLevel] == 0) {
+                int clauseToUse = UNASSIGNED; // Unsatisfied clause to take the literal from.
+                forcedChoice[recursionLevel] = false;
                 // Use an unsatisfied unit clause, if one exists.
                 while(unitClauses.size() > 0) {
-                    int cc = unitClauses.pop();
-                    if(satisfiedAtLevel[cc] == -1) {
-                        c = cc; unitClauseC++; forcedChoice[level] = true; break; 
+                    int unitClause = unitClauses.pop();
+                    if(satisfiedAtLevel[unitClause] == UNASSIGNED) { // Found one, let's use this one.
+                        clauseToUse = unitClause;
+                        unitClauseC++;
+                        forcedChoice[recursionLevel] = true;
+                        break;
                     }
                 }
-                // Otherwise, use an available literal from the next unsatisfied clause.
-                if(c == -1) {
-                    c = next[m];
-                    assert chances[c] > 1; // Not a unit clause...
+                // Otherwise, use an available literal from the first unsatisfied clause.
+                if(clauseToUse == UNASSIGNED) {
+                    clauseToUse = next[HEAD];
+                    assert chances[clauseToUse] > 1; // Not a unit clause...
                     // Sort the literals of the chosen clause based on remaining clause counts.
-                    if(advanceC - lastSorted[c] > SORT_THRESHOLD) {
-                        lastSorted[c] = advanceC;
-                        int[] cc = clauses[c];
-                        for(int i = 1; i < cc.length; i++) {
-                            assert assignedAtLevel[idx(cc[i])] == -1;
+                    if(advanceC - lastSorted[clauseToUse] > SORT_THRESHOLD) {
+                        lastSorted[clauseToUse] = advanceC;
+                        int[] literals = clauses[clauseToUse];
+                        // Simple insertion sort.
+                        for(int i = 1; i < literals.length; i++) {
+                            assert assignedAtLevel[idx(literals[i])] == UNASSIGNED;
                             int j = i;
-                            while(j > 0 && inClauseCount[idx(cc[j])] > inClauseCount[idx(cc[j-1])]) {
-                                int tmp = cc[j]; cc[j] = cc[j-1]; cc[j-1] = tmp; j--;
+                            while(j > 0 && inActiveClausesCount[idx(literals[j])] > inActiveClausesCount[idx(literals[j-1])]) {
+                                int tmp = literals[j]; literals[j] = literals[j-1]; literals[j-1] = tmp; j--;
                             }
                         }    
                     }
                 }
-                // From the chosen clause, use the first literal that can still be made true.                
-                for(int lit: clauses[c]) { 
-                    if(assignedAtLevel[idx(-lit)] == -1) { literalUsed[level] = lit; break; }
+                // From the chosen clause, use the first literal whose negation has not been assigned yet.
+                for(int literal: clauses[clauseToUse]) {
+                    if(assignedAtLevel[idx(-literal)] == UNASSIGNED) {
+                        literalUsed[recursionLevel] = literal; break;
+                    }
                 }                
             }            
             
-            // Use the literal that was chosen for this level. One must now exist.
-            int lit = literalUsed[level];
-            assert lit != 0;
+            // Use the literal that was chosen for this recursionLevel. One must exist at this point.
+            int literalToUse = literalUsed[recursionLevel];
             
             // Stage 0: Try making the chosen literal true and see what happens.
             // Stage 1: Try making the chosen literal false and see what happens.
@@ -199,78 +215,80 @@ public class SATSolver {
             
             // If at iterationStage 1 or 2, undo the effect of making current literal true. However,
             // skip the undo of iterationStage 1 if the choice of that literal was forced.
-            if(iterationStage[level] > 0 && (iterationStage[level] == 1 || !forcedChoice[level])) {
-                int opp = iterationStage[level] == 1 ? lit: -lit;
+            if(iterationStage[recursionLevel] > 0 && (iterationStage[recursionLevel] == 1 || !forcedChoice[recursionLevel])) {
+                // Depending on stage of iteration, use either current literal or its negation.
+                int oppositeLiteral = iterationStage[recursionLevel] == 1 ? literalToUse: -literalToUse;
                 // That literal is no longer part of the solution.
-                assignedAtLevel[idx(opp)] = -1;
-                // Clauses that became satisfied at this level are no longer satisfied.
-                for(int c: literalInClause.get(idx(opp))) {
-                    if(satisfiedAtLevel[c] == level) {
-                        satisfiedAtLevel[c] = -1;
-                        prev[next[c]] = next[prev[c]] = c; // Back to dancing list you go.
-                        for(int li: clauses[c]){
-                            if(assignedAtLevel[idx(li)] == -1 && assignedAtLevel[idx(-li)] == -1) {
-                                ++inClauseCount[idx(li)];
+                assignedAtLevel[idx(oppositeLiteral)] = UNASSIGNED;
+                // Clauses that became satisfied at this recursionLevel are no longer satisfied.
+                for(int clause: literalInClause.get(idx(oppositeLiteral))) {
+                    if(satisfiedAtLevel[clause] == recursionLevel) {
+                        satisfiedAtLevel[clause] = UNASSIGNED;
+                        prev[next[clause]] = next[prev[clause]] = clause; // Back to dancing list you go.
+                        for(int li: clauses[clause]){
+                            if(assignedAtLevel[idx(li)] == UNASSIGNED && assignedAtLevel[idx(-li)] == UNASSIGNED) {
+                                ++inActiveClausesCount[idx(li)];
                             }
                         }
                     }
                 }
                 // Each clause that contains the opposite literal gets another chance.
-                for(int c: literalInClause.get(idx(-opp))) { 
-                    if(satisfiedAtLevel[c] == -1) { ++chances[c]; }
+                for(int c: literalInClause.get(idx(-oppositeLiteral))) {
+                    if(satisfiedAtLevel[c] == UNASSIGNED) { ++chances[c]; }
                 }
             }            
 
             // If at iterationStage 0 or 1, propagate the effects of making this literal true.
-            // However, skip the iterationStage 1 if the choice of literal was forced at this level.
-            if(iterationStage[level] < 2 && (iterationStage[level] == 0 || !forcedChoice[level])) {
+            // However, skip the iterationStage 1 if the choice of literal was forced at this recursionLevel.
+            if(iterationStage[recursionLevel] < 2 && (iterationStage[recursionLevel] == 0 || !forcedChoice[recursionLevel])) {
                 // Use the literal at iterationStage 0, and its negation at iterationStage 1.
-                lit = iterationStage[level] == 0 ? lit: -lit;
-                assignedAtLevel[idx(lit)] = level;
+                literalToUse = iterationStage[recursionLevel] == 0 ? literalToUse: -literalToUse;
+                assignedAtLevel[idx(literalToUse)] = recursionLevel;
                 boolean itsStillGood = false;
-                int unitClausesAdded = 0;
-                for(int c: literalInClause.get(idx(lit))) {
-                    if(satisfiedAtLevel[c] == -1) {
+                int unitClausesAdded = 0; // Keep track of unit clauses added this level, needed for undo.
+                for(int clause: literalInClause.get(idx(literalToUse))) {
+                    if(satisfiedAtLevel[clause] == UNASSIGNED) {
                         itsStillGood = true; // Literal becomes good.
-                        satisfiedAtLevel[c] = level;
-                        prev[next[c]] = prev[c]; next[prev[c]] = next[c];
+                        satisfiedAtLevel[clause] = recursionLevel;
+                        prev[next[clause]] = prev[clause]; next[prev[clause]] = next[clause];
                         // Literals of that clause now occur in one fewer unsatisfied clause.
-                        for(int li: clauses[c]) {
-                            if(assignedAtLevel[idx(li)] == -1 && assignedAtLevel[idx(-li)] == -1) {
-                                --inClauseCount[idx(li)];
+                        for(int literal: clauses[clause]) {
+                            if(assignedAtLevel[idx(literal)] == UNASSIGNED && assignedAtLevel[idx(-literal)] == UNASSIGNED) {
+                                --inActiveClausesCount[idx(literal)];
                             }
                         }
                     }
-                }                
+                }
                 // Forward checking cutoff to recognize a futile branch.
-                for(int c: literalInClause.get(idx(-lit))) {
-                    if(satisfiedAtLevel[c] == -1) {
+                for(int clause: literalInClause.get(idx(-literalToUse))) {
+                    if(satisfiedAtLevel[clause] == UNASSIGNED) {
                         // If some clause has become impossible to satisfy, force a cutoff.
-                        if(--chances[c] == 0) { 
+                        if(--chances[clause] == 0) {
                             if(itsStillGood) { forwardCheckingC++; }
                             itsStillGood = false;
                         }
                         // Bring the clause into the set of known unit clauses.
-                        else if(chances[c] == 1) { 
-                            unitClauses.push(c); unitClausesAdded++; 
+                        else if(chances[clause] == 1) {
+                            unitClauses.push(clause);
+                            unitClausesAdded++;
                         }
                     }
                 }
                 
-                iterationStage[level]++; // Advance to next iterationStage at the current level.
-                if(itsStillGood) { // Advance to the next level, or give up.
-                    level = (++advanceC != giveUp) ? level + 1 : -1;
+                iterationStage[recursionLevel]++; // Advance to next iterationStage at the current recursionLevel.
+                if(itsStillGood) { // Advance to the next recursionLevel, or give up.
+                    recursionLevel = (++advanceC != giveUp) ? recursionLevel + 1 : -1;
                 }
                 else { // Cancel all unit clauses added at this iterationStage.
-                    for(int i = 0; i < unitClausesAdded; i++) { unitClauses.pop(); }
+                    for(int count = 0; count < unitClausesAdded; count++) { unitClauses.pop(); }
                 }
             }
-            else { // If at iterationStage 2 at current level, backtrack to previous level.
+            else { // If iterationStage == 2 at current recursionLevel, backtrack to previous level.
                 unitClauses.clear(); // None of the added unit clauses is good anymore.
-                literalUsed[level] = iterationStage[level] = 0;
-                level--;
+                literalUsed[recursionLevel] = iterationStage[recursionLevel] = 0;
+                recursionLevel--;
             } 
-        } // End of while-loop
+        } // End of while-loop of simulated backtracking.
         
         if(verbose) {
             System.out.print(advanceC + " advances, ");
@@ -279,12 +297,12 @@ public class SATSolver {
         }
         
         // Reconstruct the solution from the literals that were taken in.
-        if(next[m] == m) { // No unsatisfied clauses remain, so a solution was found.
+        if(next[m] == m) { // No unsatisfied clauses remain, so a working solution was found.
             boolean[] result = new boolean[n + 1];
-            for(int i = 0; i < level; i++) {
-                int lit = literalUsed[i];
-                if(lit > 0 && assignedAtLevel[idx(lit)] > -1) { result[lit] = true; }
-                else if(lit < 0 && assignedAtLevel[idx(-lit)] > -1) { result[-lit] = true; }
+            for(int level = 0; level < recursionLevel; level++) {
+                int literal = literalUsed[level];
+                if(literal > 0 && assignedAtLevel[idx(literal)] > UNASSIGNED) { result[literal] = true; }
+                else if(literal < 0 && assignedAtLevel[idx(-literal)] > UNASSIGNED) { result[-literal] = true; }
             }
             return result;
         }
@@ -297,12 +315,12 @@ public class SATSolver {
      * @return The solution vector that was found, or null if there is no solution.
      */
     public static boolean[] readDimacsProblem(String filename) throws IOException {
-        Scanner s = new Scanner(new File(filename));
+        Scanner scanner = new Scanner(new File(filename));
         int[][] clauses = null;
-        int vars = 0, cloc = 0;
-        while(s.hasNextLine()) {
-            String line = s.nextLine();
-            if(line.charAt(0) == 'c') { continue; }
+        int variableCount = 0, clauseCount = 0;
+        while(scanner.hasNextLine()) {
+            String line = scanner.nextLine();
+            if(line.charAt(0) == 'c') { continue; } // comment line in DIMACS
             else if(line.charAt(0) == 'p') {
                 String[] info = line.split("\\s+");
                 int c = Integer.parseInt(info[3]);
@@ -313,21 +331,23 @@ public class SATSolver {
                 int[] clause = new int[info.length - 1];
                 for(int loc = 0; loc < info.length - 1; loc++) {
                      clause[loc] = Integer.parseInt(info[loc]);
-                     if(Math.abs(clause[loc]) > vars) { vars = Math.abs(clause[loc]); }
+                     if(Math.abs(clause[loc]) > variableCount) { variableCount = Math.abs(clause[loc]); }
                 }
-                clauses[cloc++] = clause;
+                clauses[clauseCount++] = clause;
             }
         }
-        System.out.println("Read SAT instance with " + vars + " variables and " + cloc + " clauses."); 
+        System.out.println("Read SAT instance with " + variableCount + " variables and " + clauseCount + " clauses.");
         long startTime = System.currentTimeMillis();
-        boolean[] solution = SATSolver.solve(vars, clauses, true, -1);
+        boolean[] solution = SATSolver.solve(variableCount, clauses, true, -1);
         long endTime = System.currentTimeMillis();
         System.out.println("Finished in " + (endTime - startTime) + " ms.");
         if(solution == null) { System.out.println("This instance was unsatisfiable."); }
         else { 
-            int count = 0;
-            for(int i = 1; i <= vars; i++) { if(solution[i]) count++; }
-            System.out.println("Solution has " + count + " variables set true.");
+            int assignedTrueCount = 0;
+            for(int i = 1; i <= variableCount; i++) {
+                if(solution[i]) assignedTrueCount++; }
+
+            System.out.println("Solution has " + assignedTrueCount + " variables set true.");
         }
         return solution;
     }
