@@ -2,6 +2,11 @@
 
 # Idea from https://twitter.com/MauriceAshley/status/1630994622255169546
 
+from fractions import Fraction
+from bisect import bisect_left
+from functools import lru_cache
+
+
 def queen_captures_all(queen, pawns):
     # Determine if pawn1 is closer to queen than pawn2.
     def is_between(queen_, pawn1, pawn2):
@@ -163,3 +168,59 @@ def laser_aliens(n, aliens):
 
     solve(0, 0)
     return best_solution
+
+
+def word_board(board, words):
+    n = len(board)
+    found, visited = set(), set()
+
+    def search(x_, y_, word):
+        visited.add((x_, y_))
+        idx = bisect_left(words, word)
+        if idx < len(words):
+            if words[idx] == word:  # Found a word, record it
+                found.add(word)
+            if words[idx].startswith(word):  # If the current word can be extended, continue recursively
+                for (dx, dy) in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+                    nx, ny = x_+dx, y_+dy  # Coordinates of the neighbour
+                    if 0 <= nx < n and 0 <= ny < n and (nx, ny) not in visited:
+                        search(nx, ny, word+board[nx][ny])
+        visited.remove((x_, y_))
+
+    for x in range(n):
+        for y in range(n):
+            search(x, y, board[x][y])
+    return sorted(found)
+
+
+__zero = Fraction(0)
+__one = Fraction(1)
+__one_eighth = Fraction(1, 8)
+
+
+def accumulate_dice(d, goal):
+    one_d = Fraction(1, d)
+
+    @lru_cache(maxsize=10000)
+    def prob(s, k):
+        if k == 0:
+            return __one if s == 0 else __zero
+        else:
+            total = __zero if s < goal else prob(s, k-1)
+            for sp in range(max(0, s-d), min(goal, s)):
+                total += prob(sp, k-1) * one_d
+            return total
+
+    return [prob(s, goal) for s in range(goal, goal+d)]
+
+
+__knight_moves = [(1, 2), (2, 1), (2, -1), (1, -2), (-1, -2), (-2, -1), (-2, 1), (-1, 2)]
+
+
+@lru_cache(maxsize=10000)
+def knight_survival(n, x, y, k):
+    if x < 0 or x >= n or y < 0 or y >= n:
+        return __zero
+    elif k == 0:
+        return __one
+    return sum(knight_survival(n, x+dx, y+dy, k-1) for (dx, dy) in __knight_moves) * __one_eighth
