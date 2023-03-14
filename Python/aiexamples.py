@@ -193,6 +193,51 @@ def word_board(board, words):
     return sorted(found)
 
 
+def costas_array(rows):
+    n = len(rows)
+    dvs = set()
+    placed = dict()
+    to_fill = [row for (row, col) in enumerate(rows) if col is None]
+    still_free = [True for _ in range(n)]
+
+    def place_rook(row, col, undo_stack=None):
+        for prev_row in placed:
+            prev_col = placed[prev_row]
+            dx, dy = row-prev_row, col-prev_col
+            if (dx, dy) in dvs or (-dx, -dy) in dvs:
+                return False
+            dvs.add((dx, dy))
+            if undo_stack is not None:
+                undo_stack.append((dx, dy))
+        placed[row] = col
+        still_free[col] = False
+        return True
+
+    for (row, col) in enumerate(rows):
+        if col is not None:
+            if not place_rook(row, col):
+                return False
+
+    def fill_remaining():
+        if len(to_fill) == 0:
+            return True
+        row = to_fill.pop()
+        undo_stack = []
+        for col in range(n):
+            if still_free[col]:
+                if place_rook(row, col, undo_stack):
+                    if fill_remaining():
+                        return True
+                    still_free[col] = True
+                    del placed[row]
+                while len(undo_stack) > 0:
+                    dvs.remove(undo_stack.pop())
+        to_fill.append(row)
+        return False
+
+    return fill_remaining()
+
+
 __zero = Fraction(0)
 __one = Fraction(1)
 __one_eighth = Fraction(1, 8)
