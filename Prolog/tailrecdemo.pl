@@ -78,6 +78,37 @@ measure_reverse(N, I, J) :-
     statistics(inferences, I4),
     J is I4 - I3.
 
+/* Count how many times X occurs in the list L.
+ * First, the recursive solution. */
+
+count_rec(_, [], 0) :-
+    !.
+
+count_rec(X, [X|L], Result) :-
+    !,
+    count_rec(X, L, Result2),
+    plus(Result2, 1, Result).
+
+/* More efficient tail recursive solution. */
+
+count_rec(X, [_|L], Result) :-
+    count_rec(X, L, Result).
+
+count_acc(X, L, Result) :-
+    count_acc(X, L, 0, Result).
+
+count_acc(_, [], Result, Result) :-
+    !.
+
+count_acc(X, [X|L], Tally, Result) :-
+    !,
+    plus(Tally, 1, Tally2),
+    count_acc(X, L, Tally2, Result).
+
+count_acc(X, [_|L], Tally, Result) :-
+    count_acc(X, L, Tally, Result).
+
+
 /* Tail recursion can be applied to problems of arithmetic just as well
  * as to problems of lists. Falling power is a version of integer power
  * that is more suitable in some combinatorial computations. */
@@ -204,6 +235,31 @@ fib_acc(N, F, F2, F1) :-
     FF is F2 + F1,
     N2 is N - 1,
     fib_acc(N2, F, F1, FF).
+
+/* Express a fraction A/B as sum of distinct unit fractions
+ * using the greedy Egyptian fractions method. */
+
+greedy_egyptian(F, Result) :-
+    greedy_egyptian(F, [], Result2),
+	reverse(Result2, Result).
+
+/* Base case of tail recursion is when fraction is unit fraction. */
+
+greedy_egyptian(1/N, Units, [1/N | Units]) :- !.
+
+/* Extract the largest unit fraction that fits in A/B, and continue
+ * converting the remaining fraction into unit fractions. */
+
+greedy_egyptian(A/B, Units, Result) :-
+    N is div(B, A) + 1,
+    Num is N*A - B,
+    Den is N*B,
+    G is gcd(Num, Den),
+    Num2 is div(Num, G),
+    Den2 is div(Den, G),
+    greedy_egyptian(Num2/Den2, [1/N | Units], Result).
+
+
 
 /* Merge sort is the most straightforward O(n log n) sorting algorithm. */
 
