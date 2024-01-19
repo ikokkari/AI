@@ -89,10 +89,10 @@ count_rec(X, [X|L], Result) :-
     count_rec(X, L, Result2),
     plus(Result2, 1, Result).
 
-/* More efficient tail recursive solution. */
-
 count_rec(X, [_|L], Result) :-
     count_rec(X, L, Result).
+
+/* More efficient tail recursive solution. */
 
 count_acc(X, L, Result) :-
     count_acc(X, L, 0, Result).
@@ -258,8 +258,6 @@ greedy_egyptian(A/B, Units, Result) :-
     Num2 is div(Num, G),
     Den2 is div(Den, G),
     greedy_egyptian(Num2/Den2, [1/N | Units], Result).
-
-
 
 /* Merge sort is the most straightforward O(n log n) sorting algorithm. */
 
