@@ -12,6 +12,7 @@ public class AStar {
     
     // Count of how many nodes were expanded in the most recent search.
     private static int expandedCount;
+
     /**
      * Returns the count of how many nodes were expanded in the most recent search.
      * @return The node expansion count.
@@ -21,9 +22,25 @@ public class AStar {
     // A data structure to store a vertex that we have found in the search, along with
     // the distance to that vertex and reference from what node we arrived to this node.
     private static class SearchNode<V> {
+        /**
+         * The vertex of the original state space stored in this node.
+         */
         public V vertex;
+        /**
+         * The parent node of this node in the search tree.
+         */
         public SearchNode<V> parent;
+        /**
+         * The distance from root node to this node.
+         */
         public double g;
+
+        /**
+         * Public constructor for this class.
+         * @param vertex The vertex of the original state space stored in this node.
+         * @param parent The parent node of this node in the search tree.
+         * @param g The distance from root node to this node.
+         */
         public SearchNode(V vertex, SearchNode<V> parent, double g) {
             this.vertex = vertex; this.parent = parent; this.g = g;
         }
@@ -31,9 +48,9 @@ public class AStar {
     
     // Comparator used by the search priority queue to sort the search nodes in order
     // of increasing value of the sum g + h.
-    private static class SearchNodeComparator<V> implements Comparator<SearchNode<V>> {
+    private static class AStarComparator<V> implements Comparator<SearchNode<V>> {
         private final Function<V, Double> h; // The heuristic function.
-        public SearchNodeComparator(Function<V, Double> h) {
+        public AStarComparator(Function<V, Double> h) {
             this.h = h;
         }
         public int compare(SearchNode<V> n1, SearchNode<V> n2) {
@@ -68,7 +85,7 @@ public class AStar {
         // Initialize the trivial heuristic, if no heuristic has been given.
         if(h == null) { h = v -> 0.0; }
         // The frontier of search nodes waiting to be expanded.
-        PriorityQueue<SearchNode<V>> frontier = new PriorityQueue<>(new SearchNodeComparator<>(h));
+        PriorityQueue<SearchNode<V>> frontier = new PriorityQueue<>(new AStarComparator<>(h));
         // Initialize the search frontier to contain the start node.
         frontier.offer(new SearchNode<>(start, null, 0));
         visited.put(start, 0.0);
@@ -78,9 +95,7 @@ public class AStar {
             SearchNode<V> currentNode = frontier.poll();
             // The vertex of the original graph stored in the current node.
             V currentState = currentNode.vertex;
-            // If this vertex has previously been expanded with a lower g-cost, we can safely skip it.
-            if(visited.get(currentState) < currentNode.g) { continue; }
-            // Otherwise, expand this vertex.
+            // Expand this node.
             expandedCount++;
             // If the current state is a goal, finish the search and return the answer path.
             if(goalTest.test(currentState)) {
@@ -93,14 +108,14 @@ public class AStar {
                 return solutionPath;
             }
             // Add the undiscovered neighbours of the current state to the search frontier.
-            for(V next: edges.apply(currentState)) {
+            for(V nextState: edges.apply(currentState)) {
                 // Neighbour node path total cost.
-                double ng = currentNode.g + cost.apply(currentState, next);
+                double nextG = currentNode.g + cost.apply(currentState, nextState);
                 // If we have already visited some at least as good path to this neighbour, skip it.
-                if(visited.getOrDefault(next, Double.POSITIVE_INFINITY) <= ng) { continue; }
+                if(visited.getOrDefault(nextState, Double.POSITIVE_INFINITY) <= nextG) { continue; }
                 // Otherwise, create a new node for this neighbour.
-                frontier.offer(new SearchNode<>(next, currentNode, ng));
-                visited.put(next, ng);
+                frontier.offer(new SearchNode<>(nextState, currentNode, nextG));
+                visited.put(nextState, nextG);
             }           
         }
         // Search completed with no solution found.

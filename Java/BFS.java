@@ -10,8 +10,19 @@ public class BFS {
     // A data structure to store a vertex that we have found in the search, along with
     // the parent reference from which node the search arrived to this node.
     private static class SearchNode<V> {
+        /**
+         * The vertex of the original state space stored in this node.
+         */
         public V vertex;
+        /**
+         * The parent node of this node in the search tree.
+         */
         public SearchNode<V> parent;
+        /**
+         * Public constructor for this class.
+         * @param vertex The vertex of the original state space stored in this node.
+         * @param parent The parent node of this node in the search tree.
+         */
         public SearchNode(V vertex, SearchNode<V> parent) {
             this.vertex = vertex; this.parent = parent;
         }
@@ -43,8 +54,6 @@ public class BFS {
             // Extract the node to be processed next.
             SearchNode<V> currentNode = frontier.removeFirst();
             V currentState = currentNode.vertex;
-            // If this vertex has already been visited, skip it now.
-            if(visited.contains(currentState)) { continue; }
             // If this vertex is a goal, finish the search and build up the answer path.
             if(goalTest.test(currentState)) {
                 LinkedList<V> solutionPath = new LinkedList<V>();
@@ -58,17 +67,16 @@ public class BFS {
             // The current vertex has now been visited.
             visited.add(currentState);
             // Expand the current node and look at its neighbours.
-            for(V next: edges.apply(currentState)) {
-                if(visited.contains(next)) { continue; }
+            for(V nextState: edges.apply(currentState)) {
+                if(visited.contains(nextState)) { continue; }
                 // Add the new search node to the search frontier.
                 if(bfs) { // BFS, add the node to the back of the queue.
-                    frontier.addLast(new SearchNode<V>(next, currentNode));
+                    frontier.addLast(new SearchNode<V>(nextState, currentNode));
                 }
                 else { // DFS, add the node to the front of the queue.
-                    frontier.addFirst(new SearchNode<V>(next, currentNode));
+                    frontier.addFirst(new SearchNode<V>(nextState, currentNode));
                 }
             }
-            
         }
         return null;
     }
