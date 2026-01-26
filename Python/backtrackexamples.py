@@ -1,40 +1,67 @@
 # Some example solutions for backtracking problems in Third Python Problem Collection.
 
-from fractions import Fraction
+from bisect import bisect_left
 
-# Cutting sticks
+# Subset sum (from PythonExamples/recursion.py)
 
-def cutting_sticks(sticks):
-    s, n = sum(sticks), 0
-    while n * (n + 1) < 2 * s:
-        n += 1
-    assert (n * (n + 1)) == 2 * s
+def subset_sum(items, goal):
+    # Base case for success in this search branch.
+    if goal == 0:
+        return []
+    # Base case for failure in this search branch.
+    if len(items) == 0 or goal < 0:
+        return None
+    # Extract the last item from the items.
+    last = items.pop()
+    # Try taking the last item into chosen subset.
+    answer = subset_sum(items, goal-last)
+    if answer is not None:
+        answer.append(last)
+    else:
+        # Try not taking the last item into subset.
+        answer = subset_sum(items, goal)
+    # Restore the last item back to the items.
+    items.append(last)
+    return answer
 
-    best = n * n * n
-    def recurse(cuts, k, cost):
-        nonlocal best
-        if cost >= best:
+# Borgesian dictionary
+
+def find_all_words(letters, words):
+    n = len(letters)
+    # Initialize the dancing links node list for letters that have been taken
+    succ = [i + 1 for i in range(n+1)]
+    pred = [i - 1 for i in range(n+1)]
+    succ[n] = 0
+    pred[0] = n
+    result = []
+
+    def is_word(word):
+        i = bisect_left(words, word)
+        return i < len(words) and words[i] == word
+
+    def starts_word(word):
+        i = bisect_left(words, word)
+        return i < len(words) and words[i].startswith(word)
+
+    def recurse(word_sofar):
+        if is_word(word_sofar):
+           result.append(word_sofar)
+        elif not starts_word(word_sofar):
             return
-        if k == 0:
-            best = cost
-        else:
-            for i, s in enumerate(sticks):
-                if s >= k:
-                    if sticks[i] > k:
-                        cost -= cuts[i] * cuts[i]
-                        cuts[i] += 1
-                        cost += cuts[i] * cuts[i]
-                    sticks[i] -= k
-                    recurse(cuts, k - 1, cost)
-                    sticks[i] += k
-                    if sticks[i] > k:
-                        cost -= cuts[i] * cuts[i]
-                        cuts[i] -= 1
-                        cost += cuts[i] * cuts[i]
+        prev = '$'
+        i = succ[n]
+        while i < n:
+            if letters[i] != prev:
+                pred[succ[i]] = pred[i]
+                succ[pred[i]] = succ[i]
+                prev = letters[i]
+                recurse(word_sofar + prev)
+                succ[pred[i]] = i
+                pred[succ[i]] = i
+            i = succ[i]
 
-    recurse([0 for _ in sticks], n, 0)
-    assert best < n * n * n
-    return best
+    recurse("")
+    return result
 
 # Car match
 
@@ -85,50 +112,3 @@ def farthest_points(pos, p, k):
     for c in range(n - k + 1):
         recurse(pos[c], c, c + 1, p, k - 1)
     return best
-
-# Descending suffix game
-
-def descending_suffix_game(board, n):
-    # Set up dancing links structure for doubly linked list of points
-    succ = [i + 1 for i in range(n + 1)]
-    pred = [i - 1 for i in range(n + 1)]
-    succ[n] = 0
-    pred[0] = n
-
-    # Unlink node i from dancing list
-    def unlink(i):
-        succ[pred[i]] = succ[i]
-        pred[succ[i]] = pred[i]
-
-    # Link node i back to dancing list
-    def link(i):
-        succ[pred[i]] = pred[succ[i]] = i
-
-    # Compute the descending suffix score for standing in the current board
-    def score():
-        prev, total = 0, 0
-        for c in reversed(board):
-            if c > prev:
-                total += c
-                prev = c
-            else:
-                break
-        return Fraction(total, 1)
-
-    def recurse():
-        stand, hit, m = score(), 0, 0
-        i = succ[0]
-        while i != 0:
-            unlink(i)
-            board.append(i)
-            m += 1
-            hit += recurse()
-            board.pop()
-            link(i)
-            i = succ[i]
-        hit = hit * (Fraction(1, m) if m > 0 else 1)
-        return max(hit, stand)
-
-    for i in board:
-        unlink(i)
-    return recurse()
