@@ -97,17 +97,19 @@ def farthest_points(pos, p, k):
     def d(x, y):
         return min(abs(x - y), p - max(x, y) + min(x, y))
 
-    def recurse(f, j, i, dist, k_):
+    def recurse(first_chosen, prev_chosen, curr_pos, closest_pair_dist, k_):
         nonlocal best
-        if i + k_ > n or dist <= best:
+        if curr_pos + k_ > n or closest_pair_dist <= best:
             return
         elif k_ == 0:
-            best = max(best, dist)
+            best = max(best, closest_pair_dist)
         else:
             # Take in point i
-            recurse(f, i, i + 1, min(dist, d(pos[j], pos[i]), d(f, pos[i])), k_ - 1)
+            recurse(first_chosen, curr_pos, curr_pos + 1,
+                    min(closest_pair_dist, d(pos[prev_chosen], pos[curr_pos]), d(first_chosen, pos[curr_pos])),
+                    k_ - 1)
             # Leave out point i
-            recurse(f, j, i + 1, dist, k_)
+            recurse(first_chosen, prev_chosen, curr_pos + 1, closest_pair_dist, k_)
 
     for c in range(n - k + 1):
         recurse(pos[c], c, c + 1, p, k - 1)
