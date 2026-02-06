@@ -22,103 +22,90 @@
  * labeling/2. These predicates bind one variable or a list of
  * variables to the values in their domain one value at the time.
  */
+ 
+/* === CONSTRAINT PROPAGATION DEMO === */
 
-/* Determine if (X, Y, Z) could be side lengths of a triangle. */
-
+% Triangle inequality with constraint propagation
 triangle(X, Y, Z) :-
-    X #> 0,
-    Y #> 0,
-    Z #> 0,
+    [X, Y, Z] ins 1..100,  % Domain declaration
     X + Y #> Z,
     X + Z #> Y,
     Y + Z #> X.
 
-/* Determine whether the parameter list is strictly ascending. */
-
+% Strictly ascending list (reversible!)
 is_ascending([]).
 is_ascending([_]).
 is_ascending([N1, N2 | T]) :-
     N1 #< N2,
     is_ascending([N2 | T]).
 
-/* Use of lazy constraints allows the my_length predicate to be
- * tail recursive out of the box. */
+/* === REVERSIBLE ARITHMETIC === */
 
+% Length (works both directions!)
 my_length([], 0).
 my_length([_|T], N) :-
-    N #= N1 + 1,
+    N #= N1 + 1,  % Constraint, not computation
     my_length(T, N1).
 
-/* Factorials. */
-
+% Factorial (reversible for small values)
 n_factorial(0, 1).
-
 n_factorial(N, F) :-
-        N #> 0,
-        N1 #= N - 1,
-        F #= N * F1,
-        n_factorial(N1, F1).
+    N #> 0,
+    N1 #= N - 1,
+    F #= N * F1,  % Constraint posted before recursion
+    n_factorial(N1, F1).
 
-/* List of prime factors of the given integer N. */
+/* === PRIME FACTORIZATION === */
 
 factors(N, F) :-
+    N #> 0,
     factors(N, F, 2).
 
 factors(1, [], _).
-
 factors(N, [N], First) :-
     N #> 1,
-    First #> N.
-
+    First #> N.  % N is prime
 factors(N, [A|F], First) :-
     N #> 1,
-    two_factors(N, A, B, First),
+    smallest_factor(N, A, First),
+    B #= N // A,
     factors(B, F, A).
 
-two_factors(N, A, B) :-
-    two_factors(N, A, B, 1).
-
-two_factors(N, A, B, First) :-    
-    A #>= First,     
-    B #>= A,
-    A*A #=< N,
-    B #< N,
-    A * B #= N,
+% Find smallest factor >= First
+smallest_factor(N, A, First) :-
+    A #>= First,
+    A * A #=< N,
+    N mod A #= 0,
     indomain(A),
-    /* Eliminate the cut to produce all two-factor breakdowns. */
-    !. 
+    !.
 
-two_factors(N, N, 1, _).
+/* === BULLS (MASTERMIND) === */
 
-/* Given two lists consisting of digits 1 to 9, determine how many items
- * both lists have in common, as used in the game of "Bulls and Cows". */
-
-/* Top level call brings in the state parameters. */
+% Count matching positions in two digit lists
 bulls(L1, L2, B) :-
-    bulls(L1, L2, B, 0),
+    same_length(L1, L2),
+    L1 ins 1..9,
+    L2 ins 1..9,
     all_distinct(L1),
-    all_distinct(L2).
+    all_distinct(L2),
+    bulls_count(L1, L2, B).
 
-/* Base case unifies result with final state. */
-bulls([], [], B, B).
-
-/* General case for two matching digits. */
-bulls([D|T1], [D|T2], B, N) :-
-    D in 1..9,
-    N2 #= N + 1,
-    bulls(T1, T2, B, N2).
-
-/* General case for non-matching position. */
-bulls([D1|T1], [D2|T2], B, N) :-
+bulls_count([], [], 0).
+bulls_count([D|T1], [D|T2], B) :-
+    bulls_count(T1, T2, B1),
+    B #= B1 + 1.
+bulls_count([D1|T1], [D2|T2], B) :-
     dif(D1, D2),
-	[D1, D2] ins 1..9,
-    bulls(T1, T2, B, N).
+    bulls_count(T1, T2, B).
 
-/* Individual eating step of the Cookie Monster problem. */
+/* === COOKIE MONSTER === */
 
+% eat(Piles, N, Result) - eat N cookies from piles
+% If pile < N: unchanged
+% If pile = N: removed
+% If pile > N: reduced by N
 eat([], _, []).
 eat([H|T], N, [H|T2]) :-
-    0 #< H,
     H #< N,
     eat(T, N, T2).
 eat([H|T], N, T2) :-
@@ -128,7 +115,3 @@ eat([H|T], N, [H2|T2]) :-
     H #> N,
     H2 #= H - N,
     eat(T, N, T2).
-
-/* To learn more about CLP(FD) and its use in discrete optimization,
- * you should check out the CLP(FD) Tutorial by Anne Ogborn, available
- * at http://www.pathwayslms.com/swipltuts/clpfd/clpfd.html */
