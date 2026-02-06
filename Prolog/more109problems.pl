@@ -4,125 +4,67 @@
 
 :- use_module(library(clpfd)).
 
-/* Word shape */
-
+/* === WORD SHAPE === */
 word_shape(Word, Shape) :-
     atom_codes(Word, Codes),
     shape_list(Codes, Shape).
 
 shape_list([_], []).
-
-shape_list([C1, C2 | T], [+1 | T2]) :-
-    C1 < C2, !,
+shape_list([C1, C2 | T], [Dir | T2]) :-
+    compare(Order, C1, C2),
+    direction(Order, Dir),
     shape_list([C2 | T], T2).
 
-shape_list([C1, C2 | T], [-1 | T2]) :-
-    C1 > C2, !,
-    shape_list([C2 | T], T2).
+direction(<, +1).
+direction(>, -1).
+direction(=, 0).
 
-shape_list([C, C | T], [0 | T2]) :-
-    shape_list([C | T], T2).
+/* === REVERSE VOWELS === */
+is_vowel(C) :- 
+    member(C, [a,e,i,o,u,'A','E','I','O','U']).
 
-/* Reverse the vowels */
+reverse_vowels(Input, Output) :-
+    atom_chars(Input, Chars),
+    findall(V, (member(V, Chars), is_vowel(V)), Vowels),
+    reverse(Vowels, ReversedVowels),
+    replace_vowels(Chars, ReversedVowels, OutputChars),
+    atom_chars(Output, OutputChars).
 
-lower_vowel('a').
-lower_vowel('e').
-lower_vowel('i').
-lower_vowel('o').
-lower_vowel('u').
+replace_vowels([], [], []).
+replace_vowels([C|Cs], [V|Vs], [V2|Result]) :-
+    is_vowel(C), !,
+    match_case(V, C, V2),
+    replace_vowels(Cs, Vs, Result).
+replace_vowels([C|Cs], Vs, [C|Result]) :-
+    replace_vowels(Cs, Vs, Result).
 
-upper_vowel('A').
-upper_vowel('E').
-upper_vowel('I').
-upper_vowel('O').
-upper_vowel('U').
+match_case(V, Template, Result) :-
+    (   char_type(Template, lower)
+    ->  char_type(Result, to_lower(V))
+    ;   char_type(Result, to_upper(V))
+    ).
 
-is_vowel(C) :-
-    lower_vowel(C) ; upper_vowel(C).
-
-to_upper('a', 'A').
-to_upper('e', 'E').
-to_upper('i', 'I').
-to_upper('o', 'O').
-to_upper('u', 'U').
-
-to_lower(U, L) :-
-    to_upper(L, U).
-
-reverse_vowels(Input, Unpit) :-
-    atom_chars(Input, InputC),
-    find_vowels(InputC, Vowels),
-    reverse(Vowels, Stack),
-    process_vowels(InputC, Stack, UnpitC),
-    atomics_to_string(UnpitC, Unpit).
-
-find_vowels([], []).
-find_vowels([C | T], [C | T2] ) :-
-	is_vowel(C),
-    !,
-	find_vowels(T, T2).
-find_vowels([_ | T], T2) :-
-    find_vowels(T, T2).
-
-convert(V, C, V) :-
-    lower_vowel(V),
-    lower_vowel(C),
-    !.
-
-convert(V, C, VV) :-
-    lower_vowel(V),
-    upper_vowel(C),
-    to_upper(V, VV),
-    !.
-
-convert(V, C, V) :-
-    upper_vowel(V),
-    upper_vowel(C),
-    !.
-
-convert(V, C, VV) :-
-    upper_vowel(V),
-    lower_vowel(C),
-    to_lower(V, VV).
-
-process_vowels([], [], []).
-process_vowels([C | T], [V | T2], [VV | T3]) :-
-    is_vowel(C),
-    !,
-    convert(V, C, VV),
-    process_vowels(T, T2, T3).
-process_vowels([C | T], Stack, [C | T3]) :-
-    process_vowels(T, Stack, T3).
-
-/* McCulloch's second machine */
-
+/* === MCCULLOCH'S MACHINE === */
 mcculloch(Digits, Result) :-
     atom_chars(Digits, Chars),
     mcculloch_c(Chars, ResultC),
-    atomics_to_string(ResultC, Result).
+    atom_chars(Result, ResultC).
 
 mcculloch_c(['2' | X], X).
-
 mcculloch_c(['3' | X], Z) :-
     mcculloch_c(X, Y),
-    append(Y, ['2'], YY),
-    append(YY, Y, Z).
-
+    append(Y, ['2'|Y], Z).
 mcculloch_c(['4' | X], Z) :-
     mcculloch_c(X, Y),
-    mcculloch_c(Y, ZZ),
-    reverse(ZZ, Z).
-
+    mcculloch_c(Y, YY),
+    reverse(YY, Z).
 mcculloch_c(['5' | X], Z) :-
     mcculloch_c(X, Y),
     append(Y, Y, Z).
 
-/* Dice chirality */
-
+/* === DICE CHIRALITY === */
 dice_hand(A, B, C, H) :-
-    A in 1..6,
-    B in 1..6,
-    C in 1..6,
+    [A, B, C] ins 1..6,
     A + B #\= 7,
     A + C #\= 7,
     B + C #\= 7,
@@ -130,7 +72,8 @@ dice_hand(A, B, C, H) :-
 
 other_hand(left, right).
 other_hand(right, left).
-    
+
+% Base cases: all permutations of 1,2,3
 dice_hand_solve(1, 2, 3, left).
 dice_hand_solve(2, 3, 1, left).
 dice_hand_solve(3, 1, 2, left).
@@ -138,98 +81,62 @@ dice_hand_solve(1, 3, 2, right).
 dice_hand_solve(3, 2, 1, right).
 dice_hand_solve(2, 1, 3, right).
 
+% Recursive: flip faces 4-6 to 1-3 and swap handedness
 dice_hand_solve(A, B, C, H) :-
     A in 4..6,
-    A + A2 #= 7,
+    A2 #= 7 - A,
     other_hand(H, H2),
     dice_hand_solve(A2, B, C, H2).
-
 dice_hand_solve(A, B, C, H) :-
-    A in 1..3,
-    B in 4..6,
-    B + B2 #= 7,
+    A in 1..3, B in 4..6,
+    B2 #= 7 - B,
     other_hand(H, H2),
     dice_hand_solve(A, B2, C, H2).
-
 dice_hand_solve(A, B, C, H) :-
-    A in 1..3,
-    B in 1..3,
-    C in 4..6,
-    C + C2 #= 7,
+    A in 1..3, B in 1..3, C in 4..6,
+    C2 #= 7 - C,
     other_hand(H, H2),
     dice_hand_solve(A, B, C2, H2).
 
-/* Postfix evaluate */
-
-/* Step 1: Recursive call to version with local variables
- * as extra parameters. */
-
+/* === POSTFIX EVALUATION === */
 postfix_evaluate(Expr, Result) :-
     postfix_evaluate(Expr, Result, []).
 
-/* Step 2: Base case unifies the result variable. */
-
 postfix_evaluate([], Result, [Result]).
+postfix_evaluate([N|T], Result, Stack) :-
+    integer(N),
+    postfix_evaluate(T, Result, [N|Stack]).
+postfix_evaluate([Op|T], Result, [V1,V2|Stack]) :-
+    member(Op, [+, -, *, /]),
+    eval_op(Op, V1, V2, V),
+    postfix_evaluate(T, Result, [V|Stack]).
 
-/* Step 3: Given the state of variables before body of the
- * simulated while-loop, compute the state of variables
- * after executing that body for the tail recursive call. */
+eval_op(+, V1, V2, V) :- V #= V2 + V1.
+eval_op(-, V1, V2, V) :- V #= V2 - V1.
+eval_op(*, V1, V2, V) :- V #= V2 * V1.
+eval_op(/, V1, V2, V) :- V1 #\= 0, V #= V2 div V1.
+eval_op(/, 0, _, 0).  % Division by zero
 
-postfix_evaluate([C | T], Result, Stack) :-
-    integer(C),
-    postfix_evaluate(T, Result, [C | Stack]).
-
-postfix_evaluate(['+' | T], Result, [V1, V2 | Stack]) :-
-    V #= V1 + V2,
-    postfix_evaluate(T, Result, [V | Stack]).
-
-postfix_evaluate(['-' | T], Result, [V1, V2 | Stack]) :-
-    V #= V2 - V1,
-    postfix_evaluate(T, Result, [V | Stack]).
-
-postfix_evaluate(['*' | T], Result, [V1, V2 | Stack]) :-
-    V #= V1 * V2,
-    postfix_evaluate(T, Result, [V | Stack]).
-
-postfix_evaluate(['/' | T], Result, [V1, V2 | Stack]) :-
-    V1 #\= 0,
-    V #= V2 div V1,
-    postfix_evaluate(T, Result, [V | Stack]).
-
-postfix_evaluate(['/' | T], Result, [V1, _ | Stack]) :-
-    V1 #= 0,
-    postfix_evaluate(T, Result, [0 | Stack]).
-
-/* Lattice paths */
-
+/* === LATTICE PATHS WITH MEMOIZATION === */
 :- dynamic p/3.
-:- dynamic tabu/1.
 
 lattice_paths(N, M, Tabu, R) :-
-    assert(tabu(Tabu)),
+    retractall(p(_, _, _)),
+    nb_setval(tabu, Tabu),
     paths(N, M, R),
-    retractall(p),
-    retract(tabu(Tabu)).
-	
-paths(0, 0, 1).
+    nb_delete(tabu),
+    retractall(p(_, _, _)).
 
+paths(0, 0, 1) :- !.
+paths(N, M, 0) :- (N < 0 ; M < 0), !.
+paths(N, M, R) :- p(N, M, R), !.
 paths(N, M, 0) :-
-    ( N < 0 ; M < 0 ),
-    !.
-
+    nb_getval(tabu, Tabu),
+    member((N, M), Tabu), !.
 paths(N, M, R) :-
-    p(N, M, R),
-    !.
-
-paths(N, M, 0) :-
-	tabu(Tabu),
-    member((N, M), Tabu),
-    !.
-
-paths(N, M, R) :-
-    plus(N1, 1, N),
-    plus(M1, 1, M),
+    N1 is N - 1,
+    M1 is M - 1,
     paths(N1, M, P1),
     paths(N, M1, P2),
     R is P1 + P2,
-    assert(p(N, M, R)).
+    assertz(p(N, M, R)).
