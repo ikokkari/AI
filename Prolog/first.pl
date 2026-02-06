@@ -17,8 +17,3 @@ ancestor(X, Y) :-
 ancestor(X, Y) :-
     parent(X, Z),
     ancestor(Z, Y).
-
-int(0).
-int(X) :-
-    int(Y),
-    X is Y + 1.
