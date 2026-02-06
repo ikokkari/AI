@@ -78,6 +78,14 @@ measure_reverse(N, I, J) :-
     statistics(inferences, I4),
     J is I4 - I3.
 
+demo_reverse(N) :-
+    measure_reverse(N, Slow, Fast),
+    format('List length: ~w~n', [N]),
+    format('Naive reverse:  ~w inferences~n', [Slow]),
+    format('Accumulator:    ~w inferences~n', [Fast]),
+    Ratio is Slow / Fast,
+    format('Speedup: ~2fx~n', [Ratio]).
+
 /* Count how many times X occurs in the list L.
  * First, the recursive solution. */
 
