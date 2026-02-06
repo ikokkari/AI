@@ -172,6 +172,22 @@ is_prime(X, D) :-
     D2 is D + 2,
     is_prime(X, D2).
 
+/*
+ # Python version for comparison:
+
+ def is_prime(x):
+    if x < 2: return False
+    if x == 2: return True
+    if x % 2 == 0: return False
+    
+    d = 3
+    while d * d <= x:
+        if x % d == 0:
+            return False
+        d += 2
+    return True
+*/
+
 /* The famously bouncy and chaotic Collatz 3n+1 series. The use of an
  * accumulator again avoids the stack overflow from deep recursions. */
 
