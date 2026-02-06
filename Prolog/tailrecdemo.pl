@@ -89,33 +89,25 @@ demo_reverse(N) :-
 /* Count how many times X occurs in the list L.
  * First, the recursive solution. */
 
-count_rec(_, [], 0) :-
-    !.
-
+count_rec(_, [], 0).
 count_rec(X, [X|L], Result) :-
-    !,
     count_rec(X, L, Result2),
     plus(Result2, 1, Result).
-
-count_rec(X, [_|L], Result) :-
+count_rec(X, [Y|L], Result) :-
+    X \= Y,
     count_rec(X, L, Result).
 
 /* More efficient tail recursive solution. */
 
 count_acc(X, L, Result) :-
     count_acc(X, L, 0, Result).
-
-count_acc(_, [], Result, Result) :-
-    !.
-
+count_acc(_, [], Result, Result).
 count_acc(X, [X|L], Tally, Result) :-
-    !,
     plus(Tally, 1, Tally2),
     count_acc(X, L, Tally2, Result).
-
-count_acc(X, [_|L], Tally, Result) :-
+count_acc(X, [Y|L], Tally, Result) :-
+    X \= Y,
     count_acc(X, L, Tally, Result).
-
 
 /* Tail recursion can be applied to problems of arithmetic just as well
  * as to problems of lists. Falling power is a version of integer power
@@ -229,7 +221,7 @@ collatz(N, S, SoFar) :-
 /* Every computer science course must use Fibonacci numbers somewhere.
  * Plain recursive version is exponentially slow in every language. */
 
-fib_rec(0, 1) :- !.
+fib_rec(0, 0) :- !.
 fib_rec(1, 1) :- !.
 fib_rec(N, F) :-
     N > 1,
@@ -242,20 +234,14 @@ fib_rec(N, F) :-
 /* The accumulator version remembers the two previous Fibonacci numbers
  * F2 and F1 before the current Fibonacci number F to be computed. */
 
-fib_acc(0, 1) :- !.
+fib_acc(0, 0) :- !.
 fib_acc(1, 1) :- !.
-
 fib_acc(N, F) :-
-    fib_acc(N, F, 1, 1).
-
-/* The base case rule unifies result with the previous Fibonacci number. */
-
+    N > 1,
+    fib_acc(N, F, 0, 1).  % Start with F(0)=0, F(1)=1
 fib_acc(1, F, _, F) :- !.
-
-/* The general case shifts the sliding window from (F2, F1) to (F1, F2+F1). */
-
 fib_acc(N, F, F2, F1) :-
-    N > 0,
+    N > 1,
     FF is F2 + F1,
     N2 is N - 1,
     fib_acc(N2, F, F1, FF).
@@ -287,33 +273,30 @@ greedy_egyptian(A/B, Units, Result) :-
 
 /* Split the list into two lists alternating the elements. */
 
-split([], [], []) :- !.
-split([X], [X], []) :- !.
+split([], [], []).
+split([X], [X], []).
 split([X, Y | T], [X | T1], [Y | T2]) :-
     split(T, T1, T2).
 
 /* Merge two sorted lists into a single sorted list. */
 
-merge([], [], []) :- !.
-merge([H | T], [], [H | T]) :- !.
-merge([], [H | T], [H | T]) :- !.
-
-/* Comparing the first elements decides which one gets in. */
-
-merge([H1 | T1], [H2 | T2], [H1 | T]) :-
-    H1 < H2, !,
-    merge(T1, [H2 | T2], T).
-merge([H1 | T1], [H2 | T2], [H2 | T]) :-
-    merge([H1 | T1], T2, T).
+merge([], L, L).
+merge(L, [], L).
+merge([H1|T1], [H2|T2], [H1|M]) :-
+    H1 =< H2, !,
+    merge(T1, [H2|T2], M).
+merge([H1|T1], [H2|T2], [H2|M]) :-
+    merge([H1|T1], T2, M).
 
 /* With these preliminaries, the actual merge sort algorithm is
  * just a couple of lines in any language. */
 
-mergesort([], []) :- !.
-mergesort([X] , [X] ) :- !.
-
-mergesort([H1, H2 | T], S) :-
-    split([H1, H2 | T], L1, L2),
+mergesort([], []).
+mergesort([X], [X]).
+mergesort(L, S) :-
+    L = [_, _ | _],  % At least 2 elements
+    split(L, L1, L2),
     mergesort(L1, S1),
     mergesort(L2, S2),
     merge(S1, S2, S).
+
