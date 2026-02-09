@@ -1,4 +1,4 @@
-/* Version February 8, 2026 */
+/* Version February 9, 2026 */
 
 /* Your predicates may use the finite domain constraint solver. */
 
@@ -6,7 +6,7 @@
 
 /* Write your predicates in this presently empty space. Each predicate
  * foo that passes the corresponding test predicate test_foo is worth
- * three points to your course grade, up to the maximum of thirty points
+ * three points to your course grade, up to the maximum of twenty points
  * for ten properly solved problems. */
 
 
