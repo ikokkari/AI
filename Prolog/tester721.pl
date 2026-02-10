@@ -6,7 +6,7 @@
 
 /* Write your predicates in this presently empty space. Each predicate
  * foo that passes the corresponding test predicate test_foo is worth
- * three points to your course grade, up to the maximum of twenty points
+ * two points to your course grade, up to the maximum of twenty points
  * for ten properly solved problems. */
 
 
