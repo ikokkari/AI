@@ -90,27 +90,50 @@ def car_match(rows, trucks):
 
     return 3 * (recurse(0, 0) // 3)
 
-# Farthest points
+# Invaders must die
 
-def farthest_points(pos, p, k):
-    n, best = len(pos), 0
-    def d(x, y):
-        return min(abs(x - y), p - max(x, y) + min(x, y))
+def laser_aliens(n, aliens):
+    # Precompute sets of aliens in each row and column for quick lookup.
+    row_aliens = [set() for _ in range(n)]
+    col_aliens = [set() for _ in range(n)]
+    for (row, col) in aliens:
+        row_aliens[row].add(col)
+        col_aliens[col].add(row)
+    # Sort the row numbers based on how many aliens are on that row.
+    rows = sorted(set(r for (r, c) in aliens), key=lambda r: len(row_aliens[r]))
 
-    def recurse(first_chosen, prev_chosen, curr_pos, closest_pair_dist, k_):
-        nonlocal best
-        if curr_pos + k_ > n or closest_pair_dist <= best:
+    # Branch and bound, the best solution found so far in branch and bound recursion.
+    best_solution = n
+
+    # Recursive backtracking search to find the best solution.
+    def solve(row_idx, beams_fired_so_far):
+        nonlocal best_solution
+        # Branch and bound failure cutoff.
+        if beams_fired_so_far >= best_solution:
             return
-        elif k_ == 0:
-            best = max(best, closest_pair_dist)
-        else:
-            # Take in point i
-            recurse(first_chosen, curr_pos, curr_pos + 1,
-                    min(closest_pair_dist, d(pos[prev_chosen], pos[curr_pos]), d(first_chosen, pos[curr_pos])),
-                    k_ - 1)
-            # Leave out point i
-            recurse(first_chosen, prev_chosen, curr_pos + 1, closest_pair_dist, k_)
+        # Complete solution cutoff, all aliens in all rows eliminated.
+        if row_idx == len(rows):
+            best_solution = beams_fired_so_far
+            return
+        # The actual row that is processed at this level of recursion.
+        curr_row = rows[row_idx]
+        # Try shooting one beam through this row, provided that at least two aliens remain.
+        if len(row_aliens[curr_row]) > 1:
+            solve(row_idx + 1, beams_fired_so_far + 1)
+        # Try shooting beams through every column that has an alien on this row.
+        if len(row_aliens[curr_row]) + beams_fired_so_far < best_solution:
+            # Remove the aliens in all such remaining columns.
+            undo_stack = []
+            for c in row_aliens[curr_row]:
+                for r in col_aliens[c]:
+                    # Be careful not to modify the current row while iterating through it.
+                    if r != curr_row:
+                        undo_stack.append((r, c))
+                        row_aliens[r].remove(c)
+            solve(row_idx + 1, beams_fired_so_far + len(row_aliens[curr_row]))
+            # Restore the aliens removed with these vertical beams.
+            for (r, c_) in undo_stack:
+                row_aliens[r].add(c_)
 
-    for c in range(n - k + 1):
-        recurse(pos[c], c, c + 1, p, k - 1)
-    return best
+    solve(0, 0)
+    return best_solution
