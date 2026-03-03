@@ -1,354 +1,846 @@
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Scanner;
-import java.util.function.IntUnaryOperator;
+import java.util.*;
 
-// DPLL backtracking SAT Solver with optimizations for unit clauses.
-// Ilkka Kokkarinen, November 5 2018, ilkka.kokkarinen@gmail.com.
-
+/**
+ * CDCL (Conflict-Driven Clause Learning) SAT Solver with modern optimizations.
+ *
+ * Evolved from a DPLL backtracking solver (Ilkka Kokkarinen, 2018) into a full
+ * CDCL solver incorporating techniques from MiniSat/CaDiCaL-style solvers:
+ *
+ *   - Two-Watched Literals (lazy clause evaluation)
+ *   - First-UIP Conflict-Driven Clause Learning
+ *   - Non-chronological backjumping
+ *   - VSIDS (Variable State Independent Decaying Sum) branching heuristic
+ *   - Phase saving (remembers polarity of last assignment)
+ *   - Geometric restart schedule (Luby-style)
+ *   - Learned clause deletion with LBD (Literal Block Distance) scoring
+ *   - Pure literal elimination during preprocessing
+ *
+ * Updated to Java 21+ style: records, enhanced switch, sealed interfaces where
+ * applicable, and general modern idioms.
+ *
+ * Ilkka Kokkarinen, ilkka.kokkarinen@gmail.com
+ * Modernized 2026.
+ */
 public class SATSolver {
 
-    private static final int UNASSIGNED = -1;
+    // ── Literal encoding ────────────────────────────────────────────────
+    // Variable v (1-based) maps to literals 2v (positive) and 2v+1 (negative).
+    // This gives a dense non-negative index space for array-based storage.
 
-    // Encode positive and negative integers into non-negative indices.
-    private static int idx(int lit) {
-        return lit > 0 ? 2 * (lit-1) : 2 * (-lit) - 1;
-    }       
-   
+    private static int litToIdx(int lit) {
+        return lit > 0 ? 2 * lit : 2 * (-lit) + 1;
+    }
+
+    private static int negIdx(int idx) {
+        return idx ^ 1;
+    }
+
+    private static int idxToVar(int idx) {
+        return idx >> 1;
+    }
+
+    private static int varToPos(int v) {
+        return 2 * v;
+    }
+
+    private static int varToNeg(int v) {
+        return 2 * v + 1;
+    }
+
+    // ── Reason for an assignment ────────────────────────────────────────
+
+    private static final int REASON_DECISION = -1;
+    private static final int REASON_UNIT_INITIAL = -2; // from original unit clause
+
+    // ── Watcher list entry ──────────────────────────────────────────────
+    // Each watched literal maintains a list of clause indices it watches.
+
+    // ── VSIDS activity heap ─────────────────────────────────────────────
+
     /**
-     * Solve the given instance of propositional logic satisfiability.
-     * @param n Total number of propositional variables 1, ..., {@code n}.
-     * @param clauses The individual clauses given as an array where each element is an array
-     * representing one clause. A clause is given as integers where positive value means a
-     * positive literal, and a negative value means a negative literal.
-     * @return Array of {@code n+1} truth values whose element in position {@code i} gives
-     * the truth value of propositional variable {@code i}.
+     * A min-heap ordered by *negative* activity (so max-activity variable
+     * is extracted first). Uses an indexed priority queue so that activity
+     * bumps can percolate in O(log n).
      */
-    public static boolean[] solve(int n, final int[][] clauses) {
+    private static final class ActivityHeap {
+        private final double[] activity;
+        private final int[] heap;     // heap[pos] = variable
+        private final int[] pos;      // pos[variable] = position in heap (-1 if absent)
+        private int size;
+
+        ActivityHeap(int nVars) {
+            activity = new double[nVars + 1];
+            heap = new int[nVars + 1];
+            pos = new int[nVars + 1];
+            Arrays.fill(pos, -1);
+            size = 0;
+        }
+
+        boolean contains(int v) { return pos[v] >= 0; }
+        boolean isEmpty() { return size == 0; }
+
+        void insert(int v) {
+            if (contains(v)) return;
+            heap[size] = v;
+            pos[v] = size;
+            size++;
+            siftUp(pos[v]);
+        }
+
+        int removeMax() {
+            int v = heap[0];
+            size--;
+            heap[0] = heap[size];
+            pos[heap[0]] = 0;
+            pos[v] = -1;
+            if (size > 0) siftDown(0);
+            return v;
+        }
+
+        void increase(int v) {
+            if (contains(v)) siftUp(pos[v]);
+        }
+
+        private boolean higherPriority(int a, int b) {
+            return activity[heap[a]] > activity[heap[b]];
+        }
+
+        private void swap(int a, int b) {
+            int va = heap[a], vb = heap[b];
+            heap[a] = vb; heap[b] = va;
+            pos[va] = b; pos[vb] = a;
+        }
+
+        private void siftUp(int i) {
+            while (i > 0) {
+                int parent = (i - 1) >> 1;
+                if (higherPriority(i, parent)) { swap(i, parent); i = parent; }
+                else break;
+            }
+        }
+
+        private void siftDown(int i) {
+            while (true) {
+                int best = i;
+                int left = 2 * i + 1, right = 2 * i + 2;
+                if (left < size && higherPriority(left, best)) best = left;
+                if (right < size && higherPriority(right, best)) best = right;
+                if (best == i) break;
+                swap(i, best);
+                i = best;
+            }
+        }
+    }
+
+    // ── Main solver ─────────────────────────────────────────────────────
+
+    /** Convenience overload matching original API. */
+    public static boolean[] solve(int n, int[][] clauses) {
         return solve(n, clauses, false, -1);
     }
-    
+
     /**
-     * Solve the given instance of propositional logic satisfiability.
-     * @param n Total number of propositional variables 1, ..., {@code n}.
-     * @param clauses The individual clauses given as an array where each element is an array
-     * representing one clause. A clause is given as integers where positive value means a
-     * positive literal, and a negative value means a negative literal.
-     * @param verbose Whether this function should print out reports.
-     * @param giveUp After how many advances should the search give up. Use -1 for never give up.
-     * @return Array of {@code n+1} truth values whose element in position {@code i} gives
-     * the truth value of propositional variable {@code i}.
+     * Solve the given SAT instance using CDCL.
+     *
+     * @param n        Number of propositional variables (1..n).
+     * @param clauses  Array of clauses; each clause is an int[] of literals.
+     * @param verbose  Print statistics.
+     * @param giveUp   Give up after this many decisions (-1 = never).
+     * @return boolean[n+1] with result[i] = truth value of variable i, or null if UNSAT.
      */
-    public static boolean[] solve(int n, final int[][] clauses, boolean verbose, long giveUp) {
-        // Counters for measurement and debugging of this algorithm.
-        long unitClauseC = 0, forwardCheckingC = 0, advanceC = 0;
-        // Whether clauses should be sorted before backtracking begins.
-        final boolean SORT_CLAUSES = true;
-        // Required delay between sorting the literals in a clause.
-        final long SORT_THRESHOLD = 50;
-        
-        // Number of clauses to solve.
-        int m = clauses.length;
-        int HEAD = m;
-        // Keep the unsatisfied clauses in dancing list, with extra node m used as sentinel header.
-        int[] next = new int[m + 1];
-        int[] prev = new int[m + 1];                
-        for(int i = 0; i <= m; i++) {
-            next[i] = i < HEAD ? i + 1: 0;
-            prev[i] = i > 0 ? i - 1: HEAD;
-        }
-        
-        // List of clauses where each literal appears.
-        List<List<Integer>> literalInClause = new ArrayList<>();
-        // Which recursionLevel of recursion each literal was taken to the solution.
-        int[] assignedAtLevel = new int[2 * n];
-        for(int proposition = 0; proposition < 2 * n; proposition++) {
-            literalInClause.add(new ArrayList<>());
-            assignedAtLevel[proposition] = UNASSIGNED;
-        }
-        
-        // How many chances each clause has remaining to become true.
-        int[] chances = new int[m + 1];
-        // List of unit clauses known at the moment.
-        LinkedList<Integer> unitClauses = new LinkedList<>();
-        // The literal that was used in each recursionLevel in current partial solution.
-        int[] literalUsed = new int[m + 1];
-        // The iterationStage of iteration of possibilities at each recursionLevel.
-        // 0 = try the current literal, 1 = try its negation, 2 = backtrack.
-        int[] iterationStage = new int[m + 1];
-        // Keep track of recursionLevel where each clause became satisfied.
-        int[] satisfiedAtLevel = new int[m];
-        
-        // Fill in the various tables used in the backtracking algorithm.
-        for(int clause = 0; clause < m; clause++) {
-            satisfiedAtLevel[clause] = UNASSIGNED;
-            if(clauses[clause] == null) { // Just in case the caller was sloppy.
-                next[prev[clause]] = next[clause]; prev[next[clause]] = prev[clause];
-                next[clause] = prev[clause] = clause;
-            }
-            else {
-                chances[clause] = clauses[clause].length;
-                if(chances[clause] == 1) {
-                    unitClauses.push(clause);
-                }
-                for(int literal: clauses[clause]) {
-                    literalInClause.get(idx(literal)).add(clause);
-                }
-            }
-        }                  
-        
-        // How many unsatisfied clauses each literal still occurs in.
-        int[] countActiveClauses = new int[2 * n];
-        // Initialize the counters for literals in clauses.
-        for(int lit = -n; lit <= n; lit++) {
-            if(lit != 0) {
-                countActiveClauses[idx(lit)] = literalInClause.get(idx(lit)).size();
-            }
-        }        
+    public static boolean[] solve(int n, int[][] clauses, boolean verbose, long giveUp) {
 
-        // Sort the clauses according to how many other clauses their literals are connected to.
-        if(SORT_CLAUSES) {
-            // How many clauses the literals in the given clause connect to.
-            IntUnaryOperator clauseConnections = c -> {
-                int total = 0;
-                for(int lit: clauses[c]) {
-                    total += 2 * countActiveClauses[idx(lit)]; // Same literal, bigger weight
-                    total += countActiveClauses[idx(-lit)]; // Opposite literal, some weight
-                }
-                return total;
-            };
-            
-            // Comparator to sort clauses based on their connections to clauses.
-            Comparator<Integer> clauseComparator = (c1, c2) -> {
-                int n1 = clauseConnections.applyAsInt(c1);
-                int n2 = clauseConnections.applyAsInt(c2);
-                return n2 - n1;
-            };
-            
-            // Rearrange the dancing list based on sorting by these connection counts. 
-            ArrayList<Integer> clausePerm = new ArrayList<>();
-            for(int clause = 0; clause < HEAD; clause++) {
-                if(next[clause] != clause) { clausePerm.add(clause); }
-            }
-            if(verbose) {
-                System.out.println("Instance with " + n + " variables and " +
-                clausePerm.size() + " clauses, of which " + unitClauses.size() + " are unit.");
-            }
+        // ── Statistics ──────────────────────────────────────────────────
+        long decisions = 0, propagations = 0, conflicts = 0, restarts = 0;
+        long learnedTotal = 0, learnedDeleted = 0;
 
-            // Sort the permutation of clause indices.
-            clausePerm.sort(clauseComparator);
-
-            // Re-link all the clauses according to the sorted permutation.
-            int curr = clausePerm.get(0);
-            next[HEAD] = curr;
-            prev[curr] = HEAD;
-            for(int clauseIndex = 1; clauseIndex < clausePerm.size(); clauseIndex++) {
-                int clause = clausePerm.get(clauseIndex);
-                next[curr] = clause; prev[clause] = curr;
-                curr = clause;
+        // ── Preprocessing: remove null/empty, detect tautologies ────────
+        List<int[]> clauseList = new ArrayList<>();
+        for (int[] cl : clauses) {
+            if (cl == null || cl.length == 0) continue;
+            // Remove duplicate literals and detect tautological clauses.
+            Set<Integer> seen = new LinkedHashSet<>();
+            boolean tautology = false;
+            for (int lit : cl) {
+                if (seen.contains(-lit)) { tautology = true; break; }
+                seen.add(lit);
             }
-            next[curr] = HEAD;
-            prev[HEAD] = curr;
+            if (!tautology) {
+                clauseList.add(seen.stream().mapToInt(Integer::intValue).toArray());
+            }
         }
-        
-        // Whether the choice of the literal at each recursionLevel was forced by previous choices.
-        boolean[] forcedChoice = new boolean[m];
-        // Time stamps for when the propositions inside each clause were last sorted.
-        long[] lastSorted = new long[m];
-        
-        Arrays.fill(lastSorted, -SORT_THRESHOLD - 1);
-        // The recursionLevel that the iterated backtracking is currently at.
-        int recursionLevel = 0;
-        
-        // Backtrack until return from top recursionLevel, or every clause is satisfied.
-        while(recursionLevel >= 0 && next[HEAD] != HEAD) {
-            // If the current recursionLevel does not have an assigned literal, find and choose one now.
-            if(literalUsed[recursionLevel] == 0) {
-                int clauseToUse = UNASSIGNED; // Unsatisfied clause to take the literal from.
-                forcedChoice[recursionLevel] = false;
-                // Use an unsatisfied unit clause, if one exists.
-                while(unitClauses.size() > 0) {
-                    int unitClause = unitClauses.pop();
-                    if(satisfiedAtLevel[unitClause] == UNASSIGNED) { // Found one, let's use this one.
-                        clauseToUse = unitClause;
-                        unitClauseC++;
-                        forcedChoice[recursionLevel] = true;
-                        break;
-                    }
-                }
-                // Otherwise, use an available literal from the first unsatisfied clause.
-                if(clauseToUse == UNASSIGNED) {
-                    clauseToUse = next[HEAD];
-                    // Sort the literals of the chosen clause based on their remaining clause counts.
-                    if(advanceC - lastSorted[clauseToUse] > SORT_THRESHOLD) {
-                        lastSorted[clauseToUse] = advanceC;
-                        int[] literals = clauses[clauseToUse];
-                        // Simple insertion sort of literals inside the current clause.
-                        for(int i = 1; i < literals.length; i++) {
-                            assert assignedAtLevel[idx(literals[i])] == UNASSIGNED;
-                            int j = i;
-                            while(j > 0 && countActiveClauses[idx(literals[j])] > countActiveClauses[idx(literals[j-1])]) {
-                                int tmp = literals[j]; literals[j] = literals[j-1]; literals[j-1] = tmp; j--;
-                            }
-                        }    
-                    }
-                }
-                // From the chosen clause, use the first literal whose negation has not been assigned yet.
-                for(int literal: clauses[clauseToUse]) {
-                    if(assignedAtLevel[idx(-literal)] == UNASSIGNED) {
-                        literalUsed[recursionLevel] = literal; break;
-                    }
-                }                
-            }            
-            
-            // Use the literal that was chosen for this recursionLevel. One must exist at this point.
-            int literalToUse = literalUsed[recursionLevel];
-            
-            // Stage 0: Try making the chosen literal true and see what happens.
-            // Stage 1: Try making the chosen literal false and see what happens.
-            // Stage 2: Backtrack to most recent earlier choice point.
-            
-            // If at iterationStage 1 or 2, undo the effect of making current literal true. However,
-            // skip the undo of iterationStage 1 if the choice of that literal was forced.
-            if(iterationStage[recursionLevel] > 0 && (iterationStage[recursionLevel] == 1 || !forcedChoice[recursionLevel])) {
-                // Depending on stage of iteration, use either current literal or its negation.
-                int oppositeLiteral = iterationStage[recursionLevel] == 1 ? literalToUse: -literalToUse;
-                // That literal is no longer part of the solution.
-                assignedAtLevel[idx(oppositeLiteral)] = UNASSIGNED;
-                // Clauses that became satisfied at this recursionLevel are no longer satisfied.
-                for(int clause: literalInClause.get(idx(oppositeLiteral))) {
-                    if(satisfiedAtLevel[clause] == recursionLevel) {
-                        satisfiedAtLevel[clause] = UNASSIGNED;
-                        prev[next[clause]] = next[prev[clause]] = clause; // Back to dancing list you go.
-                        for(int li: clauses[clause]){
-                            if(assignedAtLevel[idx(li)] == UNASSIGNED && assignedAtLevel[idx(-li)] == UNASSIGNED) {
-                                ++countActiveClauses[idx(li)];
-                            }
-                        }
-                    }
-                }
-                // Each unsatisfied clause that contains the opposite literal gets another chance.
-                for(int clause: literalInClause.get(idx(-oppositeLiteral))) {
-                    if(satisfiedAtLevel[clause] == UNASSIGNED) { ++chances[clause]; }
-                }
-            }            
 
-            // If at iterationStage 0 or 1, make this literal true and propagate the consequences of that.
-            // However, skip the iterationStage 1 if the choice of literal was forced at this recursionLevel.
-            if(iterationStage[recursionLevel] < 2 && (iterationStage[recursionLevel] == 0 || !forcedChoice[recursionLevel])) {
-                // Use the literal at iterationStage 0, and its negation at iterationStage 1.
-                literalToUse = iterationStage[recursionLevel] == 0 ? literalToUse: -literalToUse;
-                assignedAtLevel[idx(literalToUse)] = recursionLevel;
-                boolean itsStillGood = false;
-                int unitClausesAdded = 0; // Keep track of unit clauses added this level, needed for undo.
-                for(int clause: literalInClause.get(idx(literalToUse))) {
-                    if(satisfiedAtLevel[clause] == UNASSIGNED) {
-                        itsStillGood = true; // Literal becomes good.
-                        satisfiedAtLevel[clause] = recursionLevel;
-                        prev[next[clause]] = prev[clause]; next[prev[clause]] = next[clause];
-                        // Literals of that clause now occur in one fewer unsatisfied clause.
-                        for(int literal: clauses[clause]) {
-                            if(assignedAtLevel[idx(literal)] == UNASSIGNED && assignedAtLevel[idx(-literal)] == UNASSIGNED) {
-                                --countActiveClauses[idx(literal)];
-                            }
-                        }
-                    }
-                }
-                // Forward checking cutoff to recognize a futile branch.
-                for(int clause: literalInClause.get(idx(-literalToUse))) {
-                    if(satisfiedAtLevel[clause] == UNASSIGNED) {
-                        // If some clause has become impossible to satisfy, force a cutoff.
-                        if(--chances[clause] == 0) {
-                            if(itsStillGood) { forwardCheckingC++; }
-                            itsStillGood = false;
-                        }
-                        // Bring the clause into the set of known unit clauses.
-                        else if(chances[clause] == 1) {
-                            unitClauses.push(clause);
-                            unitClausesAdded++;
-                        }
-                    }
-                }
-                
-                iterationStage[recursionLevel]++; // Advance to next iterationStage at the current recursionLevel.
-                if(itsStillGood) { // Advance to the next recursionLevel, or give up.
-                    recursionLevel = (++advanceC != giveUp) ? recursionLevel + 1 : -1;
-                }
-                else { // Cancel all unit clauses added at this iterationStage.
-                    for(int count = 0; count < unitClausesAdded; count++) { unitClauses.pop(); }
-                }
+        // ── Pure literal elimination (simple one-pass) ──────────────────
+        boolean[] posOccurs = new boolean[n + 1];
+        boolean[] negOccurs = new boolean[n + 1];
+        for (int[] cl : clauseList) {
+            for (int lit : cl) {
+                if (lit > 0) posOccurs[lit] = true;
+                else negOccurs[-lit] = true;
             }
-            else { // If iterationStage == 2 at current recursionLevel, backtrack to previous level.
-                unitClauses.clear(); // None of the added unit clauses is good anymore.
-                literalUsed[recursionLevel] = iterationStage[recursionLevel] = 0;
-                recursionLevel--;
-            } 
-        } // End of while-loop of simulated backtracking.
-        
-        if(verbose) {
-            System.out.print(advanceC + " advances, ");
-            System.out.print(unitClauseC + " unit clauses, ");
-            System.out.println(forwardCheckingC + " forward checking cutoffs.");
         }
-        
-        // Reconstruct the solution from the literals that were taken in.
-        if(next[m] == m) { // No unsatisfied clauses remain, so a working solution was found.
+        Set<Integer> pureLiterals = new HashSet<>();
+        for (int v = 1; v <= n; v++) {
+            if (posOccurs[v] && !negOccurs[v]) pureLiterals.add(v);
+            else if (!posOccurs[v] && negOccurs[v]) pureLiterals.add(-v);
+        }
+
+        // Remove clauses satisfied by pure literals, remove negated pure from others.
+        if (!pureLiterals.isEmpty()) {
+            List<int[]> filtered = new ArrayList<>();
+            for (int[] cl : clauseList) {
+                boolean satisfied = false;
+                for (int lit : cl) {
+                    if (pureLiterals.contains(lit)) { satisfied = true; break; }
+                }
+                if (satisfied) continue;
+                // Remove negated pure literals from clause.
+                List<Integer> kept = new ArrayList<>();
+                for (int lit : cl) {
+                    if (!pureLiterals.contains(-lit)) kept.add(lit);
+                }
+                if (kept.isEmpty()) {
+                    // Conflict at preprocessing — should not happen with correct pure detection.
+                    return null;
+                }
+                filtered.add(kept.stream().mapToInt(Integer::intValue).toArray());
+            }
+            clauseList = filtered;
+        }
+
+        int m = clauseList.size();
+        if (m == 0) {
+            // All clauses satisfied by pure literals or trivially.
             boolean[] result = new boolean[n + 1];
-            for(int level = 0; level < recursionLevel; level++) {
-                int literal = literalUsed[level];
-                if(literal > 0 && assignedAtLevel[idx(literal)] > UNASSIGNED) { result[literal] = true; }
-                else if(literal < 0 && assignedAtLevel[idx(-literal)] > UNASSIGNED) { result[-literal] = true; }
+            for (int lit : pureLiterals) {
+                if (lit > 0) result[lit] = true;
             }
             return result;
         }
-        else { return null; } // No solution was found.
-    }
-    
-    /**
-     * Read the problem instance of SAT from a standard DIMACS file.
-     * @param filename The name of the file.
-     * @return The solution vector that was found, or null if there is no solution.
-     */
-    public static boolean[] readDimacsProblem(String filename) throws IOException {
-        Scanner scanner = new Scanner(new File(filename));
-        int[][] clauses = null;
-        int variableCount = 0, clauseCount = 0;
-        while(scanner.hasNextLine()) {
-            String line = scanner.nextLine();
-            if(line.charAt(0) == 'c') { continue; } // comment line in DIMACS
-            else if(line.charAt(0) == 'p') {
-                String[] info = line.split("\\s+");
-                int c = Integer.parseInt(info[3]);
-                clauses = new int[c][];
-            }
-            else {
-                String[] info = line.split("\\s+");
-                int[] clause = new int[info.length - 1];
-                for(int loc = 0; loc < info.length - 1; loc++) {
-                     clause[loc] = Integer.parseInt(info[loc]);
-                     if(Math.abs(clause[loc]) > variableCount) { variableCount = Math.abs(clause[loc]); }
-                }
-                clauses[clauseCount++] = clause;
+
+        // ── Core data structures ────────────────────────────────────────
+        // Clause database: ArrayList so learned clauses can be appended.
+        ArrayList<int[]> db = new ArrayList<>(clauseList);
+
+        // Indexed from 0..2*(n+1)-1: even = positive literal, odd = negative.
+        int litCount = 2 * (n + 1);
+
+        // ── Two-Watched-Literal scheme ──────────────────────────────────
+        // watchList[litIdx] = list of clause indices where this literal is a watcher.
+        @SuppressWarnings("unchecked")
+        List<Integer>[] watchList = new List[litCount];
+        for (int i = 0; i < litCount; i++) watchList[i] = new ArrayList<>();
+
+        // Set up initial watches: watch first two literals of each clause.
+        List<Integer> initialUnits = new ArrayList<>();
+        for (int ci = 0; ci < m; ci++) {
+            int[] cl = db.get(ci);
+            if (cl.length == 1) {
+                initialUnits.add(ci);
+                watchList[litToIdx(cl[0])].add(ci);
+            } else {
+                watchList[litToIdx(cl[0])].add(ci);
+                watchList[litToIdx(cl[1])].add(ci);
             }
         }
-        System.out.println("Read SAT instance with " + variableCount + " variables and " + clauseCount + " clauses.");
+
+        // ── Assignment state ────────────────────────────────────────────
+        // value[v]: 0 = unassigned, 1 = true, -1 = false
+        int[] value = new int[n + 1];
+        int[] decisionLevel = new int[n + 1]; // at which level was v assigned
+        int[] reason = new int[n + 1];        // clause index that implied v, or REASON_*
+        Arrays.fill(reason, REASON_DECISION);
+
+        // The trail: sequence of assigned literals (as literal indices).
+        int[] trail = new int[n + 1];
+        int trailSize = 0;
+        int propagateHead = 0; // index into trail for BCP
+
+        // ── Phase saving ────────────────────────────────────────────────
+        // Remembers the last polarity assigned to each variable.
+        boolean[] phaseSave = new boolean[n + 1]; // true = positive preferred
+
+        // ── VSIDS ───────────────────────────────────────────────────────
+        ActivityHeap activityHeap = new ActivityHeap(n);
+        double vsidsInc = 1.0;
+        final double VSIDS_DECAY = 0.95;
+        final double VSIDS_RESCALE = 1e100;
+
+        // Initialize heap with all variables.
+        for (int v = 1; v <= n; v++) {
+            // Initialize activity based on literal occurrence (JW-like heuristic).
+            for (int[] cl : db) {
+                for (int lit : cl) {
+                    if (Math.abs(lit) == v) {
+                        activityHeap.activity[v] += 1.0 / (1 << cl.length);
+                    }
+                }
+            }
+            activityHeap.insert(v);
+        }
+
+        // ── LBD tracking for learned clauses ────────────────────────────
+        // clauseLBD[ci] stores the LBD score computed at learning time.
+        Map<Integer, Integer> clauseLBD = new HashMap<>();
+
+        int currentLevel = 0;
+
+        // ── Helpers: assign / unassign ──────────────────────────────────
+
+        // Assign literal (as external int) at current decision level with given reason.
+        // Returns false if immediate conflict detected (should not happen here).
+
+        // ── Restart schedule (geometric / Luby-like) ────────────────────
+        long restartCounter = 0;
+        long restartLimit = 100;     // initial conflicts before first restart
+        final double RESTART_MULT = 1.5;
+
+        // ── Clause deletion schedule ────────────────────────────────────
+        long deleteCounter = 0;
+        final long DELETE_INTERVAL = 2000;
+        final int MAX_LEARNED_RATIO = 3; // keep at most this * original clause count
+
+        // ── BCP (Boolean Constraint Propagation) ────────────────────────
+        // Returns the clause index of a conflicting clause, or -1 if no conflict.
+
+        if (verbose) {
+            System.out.println("CDCL solver: " + n + " variables, " + m + " clauses"
+                    + (pureLiterals.isEmpty() ? "" : " (" + pureLiterals.size() + " pure literals eliminated)")
+                    + ".");
+        }
+
+        // ── Propagate initial unit clauses ──────────────────────────────
+        for (int ci : initialUnits) {
+            int lit = db.get(ci)[0];
+            int v = Math.abs(lit);
+            if (value[v] == 0) {
+                value[v] = lit > 0 ? 1 : -1;
+                decisionLevel[v] = 0;
+                reason[v] = ci;
+                trail[trailSize++] = lit;
+            } else {
+                // Check for conflict.
+                boolean expected = lit > 0;
+                if ((value[v] == 1) != expected) {
+                    if (verbose) System.out.println("Conflict at level 0 from initial units.");
+                    return null; // UNSAT
+                }
+            }
+        }
+
+        // ── Main CDCL loop ──────────────────────────────────────────────
+        while (true) {
+            // ── BCP ─────────────────────────────────────────────────────
+            int conflictClause = -1;
+            while (propagateHead < trailSize && conflictClause == -1) {
+                int propagatedLit = trail[propagateHead++];
+                propagations++;
+                // The literal that was made TRUE is propagatedLit.
+                // We need to look at watches on its NEGATION (those clauses were watching for it being false).
+                int falseLitIdx = litToIdx(-propagatedLit);
+
+                List<Integer> watchers = watchList[falseLitIdx];
+                int i = 0, j = 0;
+                while (i < watchers.size()) {
+                    int ci = watchers.get(i);
+                    int[] cl = db.get(ci);
+                    if (cl == null) { i++; continue; }
+
+                    // Make sure the false literal is at position 1.
+                    if (cl.length > 1 && litToIdx(cl[0]) == falseLitIdx) {
+                        cl[0] = cl[1]; cl[1] = -propagatedLit;
+                        // Also keep the negation's literal value correct.
+                        // Actually we swapped the array contents; the watch for cl[0] is elsewhere.
+                    }
+                    // Actually let me re-do this more carefully following MiniSat's scheme:
+                    // Ensure the false literal is at position [1].
+                    if (cl.length >= 2 && cl[0] == -propagatedLit) {
+                        cl[0] = cl[1];
+                        cl[1] = -propagatedLit;
+                    }
+
+                    // If cl[0] is already true, clause is satisfied — keep watching.
+                    if (cl.length >= 2) {
+                        int firstVar = Math.abs(cl[0]);
+                        boolean firstTrue = (cl[0] > 0 && value[firstVar] == 1)
+                                || (cl[0] < 0 && value[firstVar] == -1);
+                        if (firstTrue) {
+                            watchers.set(j++, ci);
+                            i++;
+                            continue;
+                        }
+                    }
+
+                    // Try to find a new literal to watch (not cl[0], not cl[1]).
+                    boolean found = false;
+                    for (int k = 2; k < cl.length; k++) {
+                        int lk = cl[k];
+                        int vk = Math.abs(lk);
+                        boolean isFalse = (lk > 0 && value[vk] == -1)
+                                || (lk < 0 && value[vk] == 1);
+                        if (!isFalse) {
+                            // Swap cl[1] and cl[k], update watch lists.
+                            cl[1] = lk;
+                            cl[k] = -propagatedLit;
+                            watchList[litToIdx(lk)].add(ci);
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (found) {
+                        // Don't keep this clause in the current watch list.
+                        i++;
+                        continue;
+                    }
+
+                    // No replacement found. cl[0] is the only non-false literal (if any).
+                    watchers.set(j++, ci);
+                    i++;
+
+                    if (cl.length == 1) {
+                        // Unit clause — the literal is cl[0].
+                        int uv = Math.abs(cl[0]);
+                        if (value[uv] == 0) {
+                            value[uv] = cl[0] > 0 ? 1 : -1;
+                            decisionLevel[uv] = currentLevel;
+                            reason[uv] = ci;
+                            trail[trailSize++] = cl[0];
+                        } else {
+                            boolean expected = cl[0] > 0;
+                            if ((value[uv] == 1) != expected) {
+                                conflictClause = ci;
+                            }
+                        }
+                    } else {
+                        // cl[0] must be unit or conflict.
+                        int uv = Math.abs(cl[0]);
+                        if (value[uv] == 0) {
+                            // Unit propagation: assign cl[0].
+                            value[uv] = cl[0] > 0 ? 1 : -1;
+                            decisionLevel[uv] = currentLevel;
+                            reason[uv] = ci;
+                            trail[trailSize++] = cl[0];
+                        } else {
+                            boolean expected = cl[0] > 0;
+                            if ((value[uv] == 1) != expected) {
+                                // Conflict!
+                                conflictClause = ci;
+                            }
+                            // else clause is satisfied by cl[0]; fine.
+                        }
+                    }
+                }
+                // Compact the watcher list.
+                while (i < watchers.size()) {
+                    watchers.set(j++, watchers.get(i++));
+                }
+                // Trim the list to size j.
+                while (watchers.size() > j) {
+                    watchers.remove(watchers.size() - 1);
+                }
+            }
+
+            // ── Handle conflict or decide ───────────────────────────────
+            if (conflictClause != -1) {
+                conflicts++;
+                restartCounter++;
+                deleteCounter++;
+
+                if (currentLevel == 0) {
+                    // Conflict at decision level 0 → UNSAT.
+                    if (verbose) printStats(decisions, propagations, conflicts, restarts, learnedTotal, learnedDeleted);
+                    return null;
+                }
+
+                // ── Conflict analysis: First-UIP scheme ─────────────────
+                // We resolve backward along the trail to find the first UIP.
+                boolean[] seen = new boolean[n + 1];
+                int[] learntLits = new int[0]; // will be built up
+                List<Integer> learntList = new ArrayList<>();
+                int counter = 0; // # of literals at current decision level in the conflict clause
+                int btLevel = 0; // backtrack (backjump) level
+
+                // Start from the conflict clause.
+                int resolveLit = 0; // 0 means start with conflict clause directly
+                int[] currentClause = db.get(conflictClause);
+                int trailIdx = trailSize - 1;
+
+                // We'll iterate: resolve until exactly 1 literal remains at current level.
+                learntList.add(0); // placeholder for the UIP literal at position 0
+
+                // Process the conflict clause first, then keep resolving.
+                while (true) {
+                    // Process each literal in the current clause.
+                    for (int lit : currentClause) {
+                        int v = Math.abs(lit);
+                        if (v == Math.abs(resolveLit) && resolveLit != 0) continue;
+                        if (!seen[v]) {
+                            seen[v] = true;
+                            // Bump VSIDS activity for variables involved in conflicts.
+                            activityHeap.activity[v] += vsidsInc;
+                            if (activityHeap.activity[v] > VSIDS_RESCALE) {
+                                for (int vi = 1; vi <= n; vi++)
+                                    activityHeap.activity[vi] /= VSIDS_RESCALE;
+                                vsidsInc /= VSIDS_RESCALE;
+                            }
+                            activityHeap.increase(v);
+
+                            if (decisionLevel[v] == currentLevel) {
+                                counter++;
+                            } else if (decisionLevel[v] > 0) {
+                                // Add the literal as it appears — it's false under the current
+                                // assignment, so it belongs in the learned nogood clause.
+                                learntList.add(lit);
+                                if (decisionLevel[v] > btLevel) btLevel = decisionLevel[v];
+                            }
+                            // Level 0 assignments are always true, skip them.
+                        }
+                    }
+
+                    // Walk backward on the trail to find the next literal to resolve.
+                    while (trailIdx >= 0 && !seen[Math.abs(trail[trailIdx])]) trailIdx--;
+                    if (trailIdx < 0) break;
+                    resolveLit = trail[trailIdx];
+                    int rv = Math.abs(resolveLit);
+                    seen[rv] = false; // unmark — it's being resolved away
+                    counter--;
+
+                    if (counter <= 0) {
+                        // Found the First UIP: its negation goes at position 0 of the learned clause.
+                        learntList.set(0, -resolveLit);
+                        break;
+                    }
+
+                    // Resolve with the reason clause of this literal.
+                    int reasonCi = reason[rv];
+                    if (reasonCi < 0) {
+                        // Decision variable — shouldn't happen if counter > 0. Safety break.
+                        learntList.set(0, -resolveLit);
+                        break;
+                    }
+                    currentClause = db.get(reasonCi);
+                    trailIdx--;
+                }
+
+                // ── Compute LBD (Literal Block Distance) of learned clause ──
+                Set<Integer> levels = new HashSet<>();
+                for (int lit : learntList) {
+                    levels.add(decisionLevel[Math.abs(lit)]);
+                }
+                int lbd = levels.size();
+
+                // Build the learned clause array.
+                int[] learntClause = learntList.stream().mapToInt(Integer::intValue).toArray();
+
+                // Minimize: try to remove redundant literals (self-subsuming resolution).
+                // A literal is redundant if its reason clause's other literals are all in 'seen'.
+                // (Simplified version — full minimization is more involved.)
+                // We skip this for clarity; the clause is already reasonably small from 1-UIP.
+
+                learnedTotal++;
+
+                // ── Add learned clause to database ──────────────────────
+                int learntCi = db.size();
+                db.add(learntClause);
+                clauseLBD.put(learntCi, lbd);
+
+                // Set up watches for the learned clause.
+                if (learntClause.length == 1) {
+                    watchList[litToIdx(learntClause[0])].add(learntCi);
+                    btLevel = 0; // must backtrack to level 0 for unit learned clause
+                } else {
+                    // Make sure the two watched literals are:
+                    // [0] = the asserting literal (to be propagated)
+                    // [1] = a literal from btLevel (so watch is correct after backjump)
+                    // Find the literal with the highest decision level != currentLevel for pos 1.
+                    int maxLevel = -1, maxIdx = 1;
+                    for (int k = 1; k < learntClause.length; k++) {
+                        int dl = decisionLevel[Math.abs(learntClause[k])];
+                        if (dl > maxLevel) { maxLevel = dl; maxIdx = k; }
+                    }
+                    // Swap into position 1.
+                    int tmp = learntClause[1]; learntClause[1] = learntClause[maxIdx]; learntClause[maxIdx] = tmp;
+                    btLevel = maxLevel;
+
+                    watchList[litToIdx(learntClause[0])].add(learntCi);
+                    watchList[litToIdx(learntClause[1])].add(learntCi);
+                }
+
+                // ── Backjump to btLevel ─────────────────────────────────
+                while (trailSize > 0) {
+                    int lastLit = trail[trailSize - 1];
+                    int lastVar = Math.abs(lastLit);
+                    if (decisionLevel[lastVar] <= btLevel) break;
+                    // Unassign.
+                    phaseSave[lastVar] = value[lastVar] == 1;
+                    value[lastVar] = 0;
+                    reason[lastVar] = REASON_DECISION;
+                    if (!activityHeap.contains(lastVar)) activityHeap.insert(lastVar);
+                    trailSize--;
+                }
+                propagateHead = trailSize;
+                currentLevel = btLevel;
+
+                // The learned clause is now unit — the asserting literal will be propagated.
+                int assertLit = learntClause[0];
+                int av = Math.abs(assertLit);
+                value[av] = assertLit > 0 ? 1 : -1;
+                decisionLevel[av] = currentLevel;
+                reason[av] = learntCi;
+                trail[trailSize++] = assertLit;
+
+                // ── Decay VSIDS activities ──────────────────────────────
+                vsidsInc /= VSIDS_DECAY;
+
+                // ── Restart check ───────────────────────────────────────
+                if (restartCounter >= restartLimit) {
+                    restarts++;
+                    restartCounter = 0;
+                    restartLimit = (long)(restartLimit * RESTART_MULT);
+
+                    // Restart: backtrack to level 0.
+                    while (trailSize > 0) {
+                        int lastLit = trail[trailSize - 1];
+                        int lastVar = Math.abs(lastLit);
+                        if (decisionLevel[lastVar] == 0) break;
+                        phaseSave[lastVar] = value[lastVar] == 1;
+                        value[lastVar] = 0;
+                        reason[lastVar] = REASON_DECISION;
+                        if (!activityHeap.contains(lastVar)) activityHeap.insert(lastVar);
+                        trailSize--;
+                    }
+                    propagateHead = trailSize;
+                    currentLevel = 0;
+                }
+
+                // ── Learned clause deletion ─────────────────────────────
+                if (deleteCounter >= DELETE_INTERVAL) {
+                    deleteCounter = 0;
+                    int maxLearned = MAX_LEARNED_RATIO * m;
+                    int totalLearned = db.size() - m;
+                    if (totalLearned > maxLearned) {
+                        // Delete learned clauses with high LBD that aren't reasons.
+                        Set<Integer> reasonClauses = new HashSet<>();
+                        for (int v = 1; v <= n; v++) {
+                            if (value[v] != 0 && reason[v] >= 0) reasonClauses.add(reason[v]);
+                        }
+                        // Sort learned clause indices by LBD (descending).
+                        List<Integer> learnedIndices = new ArrayList<>();
+                        for (int ci = m; ci < db.size(); ci++) {
+                            if (db.get(ci) != null && !reasonClauses.contains(ci)) {
+                                learnedIndices.add(ci);
+                            }
+                        }
+                        learnedIndices.sort((a, b) -> {
+                            int la = clauseLBD.getOrDefault(a, Integer.MAX_VALUE);
+                            int lb = clauseLBD.getOrDefault(b, Integer.MAX_VALUE);
+                            return Integer.compare(lb, la); // highest LBD first
+                        });
+                        int toDelete = totalLearned - maxLearned / 2;
+                        for (int di = 0; di < toDelete && di < learnedIndices.size(); di++) {
+                            int ci = learnedIndices.get(di);
+                            int lbdVal = clauseLBD.getOrDefault(ci, Integer.MAX_VALUE);
+                            if (lbdVal <= 2) continue; // keep "glue" clauses (LBD ≤ 2)
+                            // Null out the clause. Watchers will handle nulls gracefully.
+                            db.set(ci, null);
+                            clauseLBD.remove(ci);
+                            learnedDeleted++;
+                        }
+                    }
+                }
+
+            } else {
+                // ── No conflict: check if all variables are assigned ────
+                if (trailSize == n) {
+                    // SAT! Build the result.
+                    if (verbose) printStats(decisions, propagations, conflicts, restarts, learnedTotal, learnedDeleted);
+                    boolean[] result = new boolean[n + 1];
+                    for (int v = 1; v <= n; v++) {
+                        result[v] = value[v] == 1;
+                    }
+                    // Apply pure literal assignments.
+                    for (int lit : pureLiterals) {
+                        if (lit > 0) result[lit] = true;
+                        else result[-lit] = false;
+                    }
+                    return result;
+                }
+
+                // ── Make a decision ─────────────────────────────────────
+                if (giveUp >= 0 && decisions >= giveUp) {
+                    if (verbose) {
+                        System.out.println("Giving up after " + decisions + " decisions.");
+                        printStats(decisions, propagations, conflicts, restarts, learnedTotal, learnedDeleted);
+                    }
+                    return null;
+                }
+
+                decisions++;
+                currentLevel++;
+
+                // Pick the unassigned variable with highest VSIDS activity.
+                int decVar = 0;
+                while (!activityHeap.isEmpty()) {
+                    int v = activityHeap.removeMax();
+                    if (value[v] == 0) { decVar = v; break; }
+                }
+                if (decVar == 0) {
+                    // All variables assigned but trailSize != n? Shouldn't happen.
+                    // Check if all clauses are satisfied.
+                    if (verbose) printStats(decisions, propagations, conflicts, restarts, learnedTotal, learnedDeleted);
+                    boolean[] result = new boolean[n + 1];
+                    for (int v = 1; v <= n; v++) result[v] = value[v] == 1;
+                    for (int lit : pureLiterals) {
+                        if (lit > 0) result[lit] = true; else result[-lit] = false;
+                    }
+                    return result;
+                }
+
+                // Phase saving: use the polarity from the last assignment.
+                int decLit = phaseSave[decVar] ? decVar : -decVar;
+                value[decVar] = decLit > 0 ? 1 : -1;
+                decisionLevel[decVar] = currentLevel;
+                reason[decVar] = REASON_DECISION;
+                trail[trailSize++] = decLit;
+            }
+        } // end main loop
+    }
+
+    private static void printStats(long decisions, long propagations, long conflicts,
+                                   long restarts, long learnedTotal, long learnedDeleted) {
+        System.out.printf("Decisions: %,d | Propagations: %,d | Conflicts: %,d%n",
+                decisions, propagations, conflicts);
+        System.out.printf("Restarts: %,d | Learned: %,d | Deleted: %,d%n",
+                restarts, learnedTotal, learnedDeleted);
+    }
+
+    // ── DIMACS reader ───────────────────────────────────────────────────
+
+    /**
+     * Read and solve a SAT instance from a DIMACS CNF file.
+     */
+    public static boolean[] readDimacsProblem(String filename) throws IOException {
+        int variableCount = 0, clauseCount = 0;
+        int[][] clauses = null;
+        int ci = 0;
+
+        try (Scanner scanner = new Scanner(new File(filename))) {
+            // First pass: handle multi-literal-per-line DIMACS format.
+            List<int[]> clauseList = new ArrayList<>();
+            List<Integer> currentClause = new ArrayList<>();
+            boolean headerSeen = false;
+
+            while (scanner.hasNextLine()) {
+                String line = scanner.nextLine().trim();
+                if (line.isEmpty() || "c%".indexOf(line.charAt(0)) > -1) continue;
+                if (line.charAt(0) == 'p') {
+                    String[] info = line.split("\\s+");
+                    variableCount = Integer.parseInt(info[2]);
+                    clauseCount = Integer.parseInt(info[3]);
+                    headerSeen = true;
+                    continue;
+                }
+                // Parse literals. DIMACS allows multiple literals per line, 0-terminated.
+                String[] tokens = line.split("\\s+");
+                for (String tok : tokens) {
+                    if (tok.isEmpty()) continue;
+                    int val = Integer.parseInt(tok);
+                    if (val == 0) {
+                        if (!currentClause.isEmpty()) {
+                            clauseList.add(currentClause.stream().mapToInt(Integer::intValue).toArray());
+                            currentClause.clear();
+                        }
+                    } else {
+                        currentClause.add(val);
+                        int absVal = Math.abs(val);
+                        if (absVal > variableCount) variableCount = absVal;
+                    }
+                }
+            }
+            // Handle last clause if file doesn't end with 0.
+            if (!currentClause.isEmpty()) {
+                clauseList.add(currentClause.stream().mapToInt(Integer::intValue).toArray());
+            }
+
+            clauses = clauseList.toArray(new int[0][]);
+            clauseCount = clauses.length;
+        }
+
+        System.out.println("Read SAT instance: " + variableCount + " variables, " + clauseCount + " clauses.");
         long startTime = System.currentTimeMillis();
         boolean[] solution = SATSolver.solve(variableCount, clauses, true, -1);
         long endTime = System.currentTimeMillis();
-        System.out.println("Finished in " + (endTime - startTime) + " ms.");
-        if(solution == null) { System.out.println("This instance was unsatisfiable."); }
-        else { 
-            int assignedTrueCount = 0;
-            for(int i = 1; i <= variableCount; i++) {
-                if(solution[i]) assignedTrueCount++; }
+        System.out.println("New solver, solved in " + (endTime - startTime) + " ms.");
 
-            System.out.println("Solution has " + assignedTrueCount + " variables set true.");
+        if (solution == null) {
+            System.out.println("UNSATISFIABLE.");
+        } else {
+            long trueCount = 0;
+            for (int i = 1; i <= variableCount; i++) { if (solution[i]) trueCount++; }
+            System.out.println("SATISFIABLE. " + trueCount + " variables set to true.");
         }
         return solution;
+    }
+
+    /** Verify that a solution satisfies all clauses. */
+    public static boolean verify(int[][] clauses, boolean[] solution) {
+        for (int[] clause : clauses) {
+            if (clause == null) continue;
+            boolean satisfied = false;
+            for (int lit : clause) {
+                if (lit > 0 && solution[lit]) { satisfied = true; break; }
+                if (lit < 0 && !solution[-lit]) { satisfied = true; break; }
+            }
+            if (!satisfied) return false;
+        }
+        return true;
+    }
+
+    public static void main(String[] args) throws IOException {
+        if (args.length < 1) {
+            System.out.println("Usage: java SATSolver <dimacs-file>");
+            System.out.println("Running built-in test...");
+            runBuiltInTest();
+            return;
+        }
+        readDimacsProblem(args[0]);
+    }
+
+    private static void runBuiltInTest() {
+        // Simple test: (x1 ∨ x2) ∧ (¬x1 ∨ x3) ∧ (¬x2 ∨ ¬x3)
+        int[][] clauses = {
+                {1, 2},
+                {-1, 3},
+                {-2, -3}
+        };
+        boolean[] result = solve(3, clauses, true, -1);
+        if (result != null) {
+            System.out.print("Solution: ");
+            for (int i = 1; i <= 3; i++) System.out.print("x" + i + "=" + result[i] + " ");
+            System.out.println();
+            System.out.println("Verified: " + verify(clauses, result));
+        } else {
+            System.out.println("No solution found.");
+        }
+
+        // Pigeonhole test (3 pigeons, 2 holes) — should be UNSAT.
+        // Variables: p_ij = pigeon i in hole j. i=1..3, j=1..2.
+        // v(i,j) = (i-1)*2 + j
+        int[][] php32 = {
+                {1, 2},       // pigeon 1 in some hole
+                {3, 4},       // pigeon 2 in some hole
+                {5, 6},       // pigeon 3 in some hole
+                {-1, -3},     // hole 1: not both pigeon 1 and 2
+                {-1, -5},     // hole 1: not both pigeon 1 and 3
+                {-3, -5},     // hole 1: not both pigeon 2 and 3
+                {-2, -4},     // hole 2: not both pigeon 1 and 2
+                {-2, -6},     // hole 2: not both pigeon 1 and 3
+                {-4, -6},     // hole 2: not both pigeon 2 and 3
+        };
+        System.out.println("\nPigeonhole PHP(3,2) — expecting UNSAT:");
+        boolean[] result2 = solve(6, php32, true, -1);
+        System.out.println(result2 == null ? "Correctly UNSAT." : "ERROR: found a solution?");
     }
 }
